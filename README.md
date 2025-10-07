@@ -15,9 +15,22 @@
 
 3.返回主界面后，会看到已保存的账号。点击 “扫描签到码”，对准课堂二维码即可自动对已保存的账号进行签到。
 
-| ![](./1.jpg) | ![](./2.jpg) | ![](./3.jpg) |
-|--------------|--------------|--------------|
-| ![](./4.jpg) | ![](./5.jpg) | ![](./6.jpg) |
+
+
+<table>
+  <tr>
+    <td><img src="./1.jpg" width="120"></td>
+    <td><img src="./2.jpg" width="120"></td>
+    <td><img src="./3.jpg" width="120"></td>
+  </tr>
+  <tr>
+    <td><img src="./4.jpg" width="120"></td>
+    <td><img src="./5.jpg" width="120"></td>
+    <td><img src="./6.jpg" width="120"></td>
+  </tr>
+</table>
+
+
 
 ---
 
