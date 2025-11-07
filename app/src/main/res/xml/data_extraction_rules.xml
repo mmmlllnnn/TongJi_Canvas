@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- 使用默认数据提取规则 -->
+    </cloud-backup>
+</data-extraction-rules>

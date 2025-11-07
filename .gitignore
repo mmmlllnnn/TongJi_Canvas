@@ -1,0 +1,78 @@
+# Android Studio - Ignore entire .idea directory
+*.iml
+.gradle
+/local.properties
+/.idea
+/build
+/captures
+.externalNativeBuild
+.cxx
+/web
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Gradle files
+.gradle/
+build/
+app/build/
+
+# Local configuration file
+local.properties
+
+# Log files
+*.log
+
+# Android generated files
+*.apk
+*.ap_
+*.aab
+
+# Android Studio generated files
+*.jar
+*.class
+
+# Keystore files
+*.jks
+*.keystore
+
+# Proguard mapping files
+proguard/
+
+# Generated files
+app/debug/
+app/release/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Module specific build directories
+*/build/
+
+# Firebase configuration
+google-services.json
+
+# Crashlytics configuration
+crashlytics.properties
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Web files (if any)
+web/dist/
+
+# Kotlin build files
+.kotlin/
+
+# Editor specific files
+.vscode/
+*.swp
+*.swo
