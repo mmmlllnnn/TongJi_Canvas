@@ -7,7 +7,6 @@
 本应用实现了多人签到功能：多个用户事先通过统一认证平台登录，然后APP分别拦截并保存好每个用户的认证信息，用这个APP扫描二维码，可以依次替换认证信息打开，完成多个人的签到。
 
 
-
 ## 📖 使用指南
 1.点击 “添加用户”，进入统一认证登录页。可切换 手机版/电脑版，电脑版支持微信扫码登录。
 
@@ -31,6 +30,25 @@
     <td><img src="./6.jpg" width="200"></td>
   </tr>
 </table>
+
+## 新增web版：[点击跳转仓库](https://github.com/mmmlllnnn/TongJi_Canvas_Web)
+
+web版又称呆瓜版， 无需安装APP ，
+
+只需要对方在浏览器打开链接,对准二维码完成签到。
+
+需要你事先构建好自己的url链接，在?后替换你的认证信息。
+
+```
+https://你的域名/index.html?_canvas_middle_session=xxxxxxx
+
+```
+
+![](./7.jpg)
+
+
+
+在线版访问：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)
 
 
 
