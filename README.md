@@ -26,16 +26,24 @@
 
 <table>
   <tr>
-    <td><img src="./1.jpg" width="200"></td>
-    <td><img src="./2.jpg" width="200"></td>
-    <td><img src="./3.jpg" width="200"></td>
+    <td><img src="./pic/1.jpg" width="200"></td>
+    <td><img src="./pic/2.jpg" width="200"></td>
+    <td><img src="./pic/3.jpg" width="200"></td>
   </tr>
   <tr>
-    <td><img src="./4.jpg" width="200"></td>
-    <td><img src="./5.jpg" width="200"></td>
-    <td><img src="./6.jpg" width="200"></td>
+    <td><img src="./pic/4.jpg" width="200"></td>
+    <td><img src="./pic/5.jpg" width="200"></td>
+    <td><img src="./pic/6.jpg" width="200"></td>
   </tr>
 </table>
+
+20251120： AI重构了新版<br>
+✅ 新的UI<br>
+✅ 优化动画和操作逻辑<br>
+✅ 增加二维码识别速度和准确率<br>
+
+<img src="./pic/v3.0.0.jpg" width="40%" alt="新版3.0.0">
+
 
 ## 新增web版：[点击跳转仓库](https://github.com/mmmlllnnn/TongJi_Canvas_Web)
 
@@ -50,7 +58,7 @@ https://你的域名/index.html?_canvas_middle_session=xxxxxxx
 
 ```
 
-![](./7.jpg)
+![](./pic/7.jpg)
 
 
 
