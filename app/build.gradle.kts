@@ -1,3 +1,5 @@
+
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -12,8 +14,8 @@ android {
         applicationId = "com.mln.tongji_canvas"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20251031
-        versionName = "2.1.0"
+        versionCode = 20251120
+        versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }
@@ -23,7 +25,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a","armeabi-v7a","x86")//"armeabi-v7a","x86"
+            include("arm64-v8a","armeabi-v7a","x86")//,)//"armeabi-v7a","x86"
             isUniversalApk = true // 不生成包含所有ABI的通用APK
         }
     }
@@ -65,6 +67,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
     implementation(libs.compose.material.icons)
+    implementation(libs.accompanist.systemuicontroller)
+    implementation(libs.material)
     
     // Navigation and lifecycle
     implementation(libs.androidx.navigation.compose)
@@ -75,10 +79,12 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.mlkit.vision)
     implementation(libs.mlkit.barcode.scanning)
     
     // Permissions helper
     implementation(libs.accompanist.permissions)
+    implementation(libs.accompanist.systemuicontroller)
     
     // WebKit for WebView functionality
     implementation(libs.androidx.webkit)
@@ -88,10 +94,6 @@ dependencies {
     
     // Coil for image loading
     implementation(libs.coil.compose)
-    
-    // ZXing for high-accuracy QR code scanning
-    implementation("com.google.zxing:core:3.5.2")
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     
     // Debug tools (only in debug builds)
     debugImplementation(libs.androidx.compose.ui.tooling)

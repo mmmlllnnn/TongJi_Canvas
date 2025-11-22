@@ -1,61 +1,96 @@
 package com.mln.tongji_canvas.ui
 
+import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.PhoneIphone
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
+import com.mln.tongji_canvas.ui.components.EmptyStatePanel
 import kotlinx.coroutines.launch
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
-import androidx.compose.material3.Switch
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.math.abs
+import kotlin.math.absoluteValue
+import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun MainScreen(
     repository: SessionRepository,
@@ -64,429 +99,869 @@ fun MainScreen(
     onTestSession: (UserSession) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val pageBackground = Color(0xFFF5F7FB)
+    val clipboardManager = LocalClipboardManager.current
+
     var sessions by remember { mutableStateOf<List<UserSession>>(emptyList()) }
-    var viewingSession by remember { mutableStateOf<UserSession?>(null) }
+    var selectedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingSession by remember { mutableStateOf<UserSession?>(null) }
     var editDisplayName by remember { mutableStateOf("") }
     var editAccessToken by remember { mutableStateOf("") }
     var addingUser by remember { mutableStateOf(false) }
     var addDisplayName by remember { mutableStateOf("") }
     var addAccessToken by remember { mutableStateOf("") }
-    val context = LocalContext.current
-    // 记录哪些用户被选中参与签到
-    var selectedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    // Snackbar状态
-    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-    
-    // 滑动检测和浮动按钮状态
-    val listState = rememberLazyListState()
-    var isFabVisible by remember { mutableStateOf(true) }
-    var lastScrollY by remember { mutableStateOf(0f) }
-    
-    // 监听滑动状态
-    val scrollOffset by remember {
-        derivedStateOf {
-            listState.firstVisibleItemScrollOffset.toFloat()
-        }
-    }
-    
-    // 根据滑动方向控制浮动按钮显示
-    LaunchedEffect(scrollOffset) {
-        val currentScrollY = scrollOffset
-        val deltaY = currentScrollY - lastScrollY
-        
-        // 如果向上滑动（deltaY > 0）且滑动距离超过阈值，隐藏按钮
-        if (deltaY > 15f && currentScrollY > 100f) {
-            isFabVisible = false
-        }
-        // 如果向下滑动（deltaY < 0）或接近顶部，显示按钮
-        else if (deltaY < -15f || currentScrollY < 100f) {
-            isFabVisible = true
-        }
-        
-        lastScrollY = currentScrollY
-    }
-    
-    // 浮动按钮透明度动画
-    val fabAlpha by animateFloatAsState(
-        targetValue = if (isFabVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 300),
-        label = "fab_alpha"
-    )
+    var showAddMenu by remember { mutableStateOf(false) }
 
-    // 自动刷新用户列表
+    val previousUserIds = remember { mutableSetOf<String>() }
+    var isInitialized by remember { mutableStateOf(false) }
+
     fun refreshSessions() {
         scope.launch {
             sessions = repository.getAllSessions()
         }
     }
 
-    // 记录上一次的用户列表，用于检测新用户
-    val previousUserIds = remember { mutableSetOf<String>() }
-    var isInitialized by remember { mutableStateOf(false) }
-    
-    // 初始化时加载选中的用户ID
-    LaunchedEffect(Unit) {
-        // 加载保存的选中用户ID列表
-        selectedUserIds = repository.getSelectedUserIds()
+    fun exportSessionsToClipboard() {
+        scope.launch {
+            val exportable = sessions.filter { !it.accessToken.isNullOrBlank() }
+            if (exportable.isEmpty()) {
+                snackbarHostState.showSnackbar("暂无可导出的账号")
+                return@launch
+            }
+            val array = JSONArray()
+            exportable.forEach {
+                val obj = JSONObject()
+                obj.put("displayName", it.displayName)
+                obj.put("accessToken", it.accessToken)
+                array.put(obj)
+            }
+            clipboardManager.setText(AnnotatedString(array.toString()))
+            snackbarHostState.showSnackbar("已复制 ${exportable.size} 个账号到剪贴板")
+        }
     }
-    
-    // 初始化时加载用户列表
+
+    fun importSessionsFromClipboard() {
+        scope.launch {
+            val raw = clipboardManager.getText()?.text?.trim()
+            if (raw.isNullOrEmpty()) {
+                snackbarHostState.showSnackbar("剪贴板为空")
+                return@launch
+            }
+            try {
+                val array = JSONArray(raw)
+                var imported = 0
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val name = obj.optString("displayName", obj.optString("name")).trim()
+                    val token = obj.optString("accessToken", obj.optString("token")).trim()
+                    if (name.isNotEmpty() && token.isNotEmpty()) {
+                        val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
+                            accessToken = token,
+                            refreshToken = null,
+                            expiresIn = 3600L
+                        )
+                        repository.addOrUpdateSession(name, tokens)
+                        imported++
+                    }
+                }
+                if (imported > 0) {
+                    refreshSessions()
+                    snackbarHostState.showSnackbar("成功导入 $imported 个账号")
+                } else {
+                    snackbarHostState.showSnackbar("未识别到可导入的账号")
+                }
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("剪贴板内容格式有误")
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
+        selectedUserIds = repository.getSelectedUserIds()
         refreshSessions()
     }
 
-    // 当从其他页面返回时自动刷新
-    LaunchedEffect(repository) {
-        refreshSessions()
-    }
-    
-    // 当用户列表变化时，同步更新选中状态（移除已删除的用户，新用户默认选中）
+    LaunchedEffect(repository) { refreshSessions() }
+
     LaunchedEffect(sessions) {
         if (sessions.isEmpty()) return@LaunchedEffect
-        
+        val allIds = sessions.map { it.id }.toSet()
         if (!isInitialized) {
-            // 初始化时，设置 previousUserIds 为当前用户列表，并确保已加载的选中状态是有效的
-            val existingUserIds = sessions.map { it.id }.toSet()
             previousUserIds.clear()
-            previousUserIds.addAll(existingUserIds)
-            // 移除已删除用户的选中状态
-            selectedUserIds = selectedUserIds.filter { existingUserIds.contains(it) }.toSet()
+            previousUserIds.addAll(allIds)
+            selectedUserIds = selectedUserIds.filter { allIds.contains(it) }.toSet()
             isInitialized = true
             return@LaunchedEffect
         }
-        
-        val currentSelected = selectedUserIds.toMutableSet()
-        val existingUserIds = sessions.map { it.id }.toSet()
-        
-        // 移除已删除的用户
-        currentSelected.removeAll { !existingUserIds.contains(it) }
-        
-        // 检测新添加的用户（存在于当前列表但不在之前的列表中）
-        val newUsers = existingUserIds.filter { !previousUserIds.contains(it) && !currentSelected.contains(it) }
+        val current = selectedUserIds.toMutableSet()
+        current.removeAll { !allIds.contains(it) }
+        val newUsers = allIds.filter { !previousUserIds.contains(it) && !current.contains(it) }
         if (newUsers.isNotEmpty()) {
-            // 新用户默认选中
-            currentSelected.addAll(newUsers)
-            selectedUserIds = currentSelected
-            // 立即保存新用户的选中状态
+            current.addAll(newUsers)
+            selectedUserIds = current
             repository.saveSelectedUserIds(selectedUserIds)
-        } else if (currentSelected != selectedUserIds) {
-            // 如果只是移除了用户，也更新状态
-            selectedUserIds = currentSelected
+        } else if (current != selectedUserIds) {
+            selectedUserIds = current
         }
-        
-        // 更新记录的用户ID列表
         previousUserIds.clear()
-        previousUserIds.addAll(existingUserIds)
+        previousUserIds.addAll(allIds)
     }
-    
-    // 当用户手动切换开关时保存
+
     LaunchedEffect(selectedUserIds) {
         if (isInitialized) {
             repository.saveSelectedUserIds(selectedUserIds)
         }
     }
 
+    val topBarState = rememberTopAppBarState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topBarState)
+
     Scaffold(
-        snackbarHost = {
-            androidx.compose.material3.SnackbarHost(snackbarHostState)
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .background(pageBackground),
+        topBar = {
+            MainScreenTopBar(
+                sessionCount = sessions.size,
+                selectedCount = selectedUserIds.size,
+                scrollBehavior = scrollBehavior,
+                onImportClick = { importSessionsFromClipboard() },
+                onExportClick = { exportSessionsToClipboard() },
+                onAboutClick = {
+                    val intent = Intent(context, com.mln.tongji_canvas.AboutActivity::class.java)
+                    context.startActivity(intent)
+                }
+            )
         },
-        floatingActionButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.graphicsLayer(
-                    alpha = fabAlpha,
-                    translationY = if (isFabVisible) 0f else 100f
-                )
+        bottomBar = {
+            FloatingDock(
+                selectedCount = selectedUserIds.size,
+                onAdd = { showAddMenu = true }
             ) {
-                ExtendedFloatingActionButton(
-                    text = { Text("扫描签到码") },
-                    icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
-                    onClick = {
-                        val selectedList = sessions.filter { selectedUserIds.contains(it.id) }.map { it.id }
-                        if (selectedList.isEmpty()) {
-                            // 如果没有选中任何用户，显示提示
-                            scope.launch {
-                                snackbarHostState.showSnackbar("请至少选择一个用户参与签到")
-                            }
-                        } else {
-                            onScanQr(selectedList)
-                        }
+                val targets = sessions.filter { selectedUserIds.contains(it.id) }.map { it.id }
+                if (targets.isEmpty()) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("请至少选择一个用户参与签到")
                     }
-                )
-                ExtendedFloatingActionButton(
-                    text = { Text("添加用户") },
-                    icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
-                    onClick = onAddUser
-                )
+                } else {
+                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    onScanQr(targets)
+                }
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { inner ->
-        Column(Modifier.fillMaxSize().padding(inner).padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("批量签到", style = MaterialTheme.typography.headlineMedium)
-                IconButton(
-                    onClick = { 
-                        val intent = Intent(context, com.mln.tongji_canvas.AboutActivity::class.java)
-                        context.startActivity(intent)
-                    }
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = "关于应用",
-                        tint = MaterialTheme.colorScheme.primary
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(inner)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            pageBackground,
+                            Color(0xFFE9EDFF),
+                            Color(0xFFDDE4FF)
+                        )
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            AnimatedContent(
+                targetState = sessions.isEmpty(),
+                label = "session_list_state"
+            ) { isEmpty ->
+                if (isEmpty) {
+                    EmptyStatePanel(
+                        icon = Icons.Outlined.PersonAdd,
+                        title = "暂无账号",
+                        subtitle = "添加任意 Canvas 账号后即可一键批量签到",
+                        primaryActionLabel = "添加账号",
+                        onPrimaryAction = { showAddMenu = true },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    SessionList(
+                        sessions = sessions,
+                        selectedUserIds = selectedUserIds,
+                        onToggleSelection = { id, checked ->
+                            val updated = if (checked) selectedUserIds + id else selectedUserIds - id
+                            selectedUserIds = updated
+                            scope.launch { repository.saveSelectedUserIds(updated) }
+                            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        },
+                        onEdit = { session ->
+                            editingSession = session
+                            editDisplayName = session.displayName
+                            editAccessToken = session.accessToken.orEmpty()
+                        },
+                        onDelete = { session ->
+                            scope.launch {
+                                repository.removeSession(session.id)
+                                refreshSessions()
+                            }
+                        }
                     )
                 }
             }
-            Spacer(Modifier.height(16.dp))
-
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(8.dp), 
-                modifier = Modifier.weight(1f)
-            ) {
-                items(sessions, key = { it.id }) { s ->
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f).clickable { viewingSession = s }) {
-                                    Text(s.displayName, style = MaterialTheme.typography.titleMedium)
-                                    Spacer(Modifier.height(4.dp))
-                                    val cookieStatus = if (s.accessToken?.isNotEmpty() ?: false) {
-                                        "已保存认证信息"
-                                    } else {
-                                        "未保存认证信息"
-                                    }
-                                    Text(cookieStatus, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                    
-                                    Switch(
-                                        checked = selectedUserIds.contains(s.id),
-                                        onCheckedChange = { checked ->
-                                            val updated = if (checked) {
-                                                selectedUserIds + s.id
-                                            } else {
-                                                selectedUserIds - s.id
-                                            }
-                                            selectedUserIds = updated
-                                            // 立即保存开关状态变化
-                                            repository.saveSelectedUserIds(updated)
-                                        }
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            editingSession = s
-                                            editDisplayName = s.displayName
-                                            editAccessToken = s.accessToken ?: ""
-                                        }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Edit,
-                                            contentDescription = "编辑用户",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { onTestSession(s) }) { Text("测试") }
-                                OutlinedButton(onClick = {
-                                    scope.launch {
-                                        repository.removeSession(s.id)
-                                        refreshSessions()
-                                        selectedUserIds = selectedUserIds - s.id
-                                    }
-                                }) { Text("删除") }
-                            }
-                        }
-                    }
-                }
-                
-                // 添加用户卡片
-                item {
-                    ElevatedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { addingUser = true }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "添加用户",
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "添加自定义用户",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 
-    // 查看用户信息对话框
-    val toShow = viewingSession
-    if (toShow != null) {
-        AlertDialog(
-            onDismissRequest = { viewingSession = null },
-            title = { Text(text = toShow.displayName + " 的认证信息") },
-            text = {
-                SelectionContainer {
-                    val cookieInfo = buildString {
-                        appendLine("认证信息: ${toShow.accessToken ?: "无"}")
-                        appendLine("最后验证: ${toShow.lastVerifiedAt?.let { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it)) } ?: "无"}")
-                    }
-                    Text(cookieInfo, style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { viewingSession = null }) { Text("关闭") }
-            }
-        )
-    }
+    AddUserMenu(
+        expanded = showAddMenu,
+        onDismiss = { showAddMenu = false },
+        onOAuthAdd = {
+            showAddMenu = false
+            onAddUser()
+        },
+        onManualAdd = {
+            showAddMenu = false
+            addingUser = true
+        }
+    )
 
-    // 编辑用户信息对话框
-    val toEdit = editingSession
-    if (toEdit != null) {
-        AlertDialog(
-            onDismissRequest = { 
+    EditingDialog(
+        editingSession = editingSession,
+        editDisplayName = editDisplayName,
+        editAccessToken = editAccessToken,
+        onDisplayNameChange = { editDisplayName = it },
+        onAccessTokenChange = { editAccessToken = it },
+        onDismiss = {
+            editingSession = null
+            editDisplayName = ""
+            editAccessToken = ""
+        },
+        onSave = { session ->
+            scope.launch {
+                repository.updateSession(session.copy(displayName = editDisplayName, accessToken = editAccessToken.ifBlank { null }))
+                refreshSessions()
                 editingSession = null
                 editDisplayName = ""
                 editAccessToken = ""
-            },
-            title = { Text("编辑用户信息") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = editDisplayName,
-                        onValueChange = { editDisplayName = it },
-                        label = { Text("用户昵称") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = editAccessToken,
-                        onValueChange = { editAccessToken = it },
-                        label = { Text("认证信息") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                        maxLines = 6
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            // 更新用户信息
-                            val updatedSession = toEdit.copy(
-                                displayName = editDisplayName,
-                                accessToken = editAccessToken.ifEmpty { null }
-                            )
-                            println("准备更新用户: 原ID=${toEdit.id}, 原昵称=${toEdit.displayName}, 新昵称=${editDisplayName}")
-                            repository.updateSession(updatedSession)
-                            refreshSessions()
-                            editingSession = null
-                            editDisplayName = ""
-                            editAccessToken = ""
-                        }
-                    }
-                ) { Text("保存") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        editingSession = null
-                        editDisplayName = ""
-                        editAccessToken = ""
-                    }
-                ) { Text("取消") }
             }
-        )
-    }
+        }
+    )
+    AddUserDialog(
+        visible = addingUser,
+        displayName = addDisplayName,
+        accessToken = addAccessToken,
+        onDisplayNameChange = { addDisplayName = it },
+        onAccessTokenChange = { addAccessToken = it },
+        onDismiss = {
+            addingUser = false
+            addDisplayName = ""
+            addAccessToken = ""
+        },
+        onConfirm = {
+            if (addDisplayName.isNotBlank()) {
+                scope.launch {
+                    val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
+                        accessToken = addAccessToken.ifBlank { null },
+                        refreshToken = null,
+                        expiresIn = 3600L
+                    )
+                    repository.addOrUpdateSession(addDisplayName, tokens)
+                    refreshSessions()
+                    addingUser = false
+                    addDisplayName = ""
+                    addAccessToken = ""
+                }
+            }
+        }
+    )
+}
 
-    // 添加用户对话框
-    if (addingUser) {
-        AlertDialog(
-            onDismissRequest = { 
-                addingUser = false
-                addDisplayName = ""
-                addAccessToken = ""
-            },
-            title = { Text("添加自定义用户") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = addDisplayName,
-                        onValueChange = { addDisplayName = it },
-                        label = { Text("用户昵称") },
-                        modifier = Modifier.fillMaxWidth()
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainScreenTopBar(
+    sessionCount: Int,
+    selectedCount: Int,
+    scrollBehavior: TopAppBarScrollBehavior,
+    onImportClick: () -> Unit,
+    onExportClick: () -> Unit,
+    onAboutClick: () -> Unit
+) {
+    androidx.compose.material3.LargeTopAppBar(
+        title = {
+            Column {
+                Text("批量签到", style = MaterialTheme.typography.headlineMedium)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "共 $sessionCount 个账号",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = addAccessToken,
-                        onValueChange = { addAccessToken = it },
-                        label = { Text("认证信息") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                        maxLines = 6
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (addDisplayName.isNotBlank()) {
-                            scope.launch {
-                                // 创建新的用户会话
-                                val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
-                                    accessToken = addAccessToken.ifEmpty { null },
-                                    refreshToken = null,
-                                    expiresIn = 3600L
-                                )
-                                repository.addOrUpdateSession(addDisplayName, tokens)
-                                refreshSessions()
-                                addingUser = false
-                                addDisplayName = ""
-                                addAccessToken = ""
-                            }
+                    if (selectedCount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFE7E0FF),
+                            tonalElevation = 0.dp
+                        ) {
+                            Text(
+                                "已选 $selectedCount 个",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF5C33CF)
+                            )
                         }
                     }
-                ) { Text("添加") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        addingUser = false
-                        addDisplayName = ""
-                        addAccessToken = ""
-                    }
-                ) { Text("取消") }
+                }
             }
+        },
+        actions = {
+            TopBarActionButton(
+                icon = Icons.Outlined.ContentPaste,
+                contentDescription = "剪贴板导入",
+                onClick = onImportClick
+            )
+            TopBarActionButton(
+                icon = Icons.Outlined.IosShare,
+                contentDescription = "导出账号",
+                onClick = onExportClick
+            )
+            TopBarActionButton(
+                icon = Icons.Outlined.Info,
+                contentDescription = "关于",
+                onClick = onAboutClick
+            )
+        },
+        scrollBehavior = scrollBehavior
+    )
+}
+
+@Composable
+private fun TopBarActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(44.dp)
+            .padding(horizontal = 2.dp),
+        colors = IconButtonDefaults.iconButtonColors(
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(22.dp)
         )
     }
+}
+
+@Composable
+private fun AddUserMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onOAuthAdd: () -> Unit,
+    onManualAdd: () -> Unit
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = Modifier.background(Color.Transparent)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = Color.White,
+            tonalElevation = 6.dp,
+            shadowElevation = 12.dp,
+            modifier = Modifier.padding(4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(240.dp)
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                AddMenuOption(
+                    icon = Icons.Outlined.PhoneIphone,
+                    title = "在线登录添加",
+                    description = "自动捕获认证信息",
+                    accent = Color(0xFF7C3AED),
+                    onClick = {
+                        onOAuthAdd()
+                        onDismiss()
+                    }
+                )
+                AddMenuOption(
+                    icon = Icons.Outlined.Computer,
+                    title = "手动录入 Cookies",
+                    description = "适合已有认证信息的账号",
+                    accent = Color(0xFF0EA5E9),
+                    onClick = {
+                        onManualAdd()
+                        onDismiss()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddMenuOption(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = accent)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionList(
+    sessions: List<UserSession>,
+    selectedUserIds: Set<String>,
+    onToggleSelection: (String, Boolean) -> Unit,
+    onEdit: (UserSession) -> Unit,
+    onDelete: (UserSession) -> Unit
+) {
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(sessions, key = { it.id }) { session ->
+            SwipeableSessionCard(
+                session = session,
+                selected = selectedUserIds.contains(session.id),
+                onToggleSelection = { checked -> onToggleSelection(session.id, checked) },
+                onEdit = { onEdit(session) },
+                onDelete = { onDelete(session) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SwipeableSessionCard(
+    session: UserSession,
+    selected: Boolean,
+    onToggleSelection: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val density = LocalDensity.current
+    val swipeWidth = 96.dp
+    val swipeWidthPx = with(density) { swipeWidth.toPx() }
+    var offsetPx by remember { mutableFloatStateOf(0f) }
+    val statusInfo = SessionStatusInfo(session)
+    val borderStroke = if (selected) {
+        BorderStroke(2.dp, Color(0xFFB8A2FF))
+    } else {
+        BorderStroke(1.dp, Color(0xFFE6E8F2))
+    }
+    val surfaceColor = Color.White
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(end = 16.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .width(swipeWidth)
+                    .fillMaxHeight()
+                    .defaultMinSize(minHeight = 64.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable {
+                            offsetPx = 0f
+                            onDelete()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.onError
+                        )
+                        Text(
+                            text = "删除",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onError
+                        )
+                    }
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetPx.toInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val threshold = swipeWidthPx / 2
+                            offsetPx = if (abs(offsetPx) > threshold) -swipeWidthPx else 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            val newOffset = (offsetPx + dragAmount).coerceIn(-swipeWidthPx, 0f)
+                            offsetPx = newOffset
+                        }
+                    )
+                }
+                .clip(RoundedCornerShape(28.dp)),
+            shape = RoundedCornerShape(30.dp),
+            tonalElevation = if (selected) 4.dp else 1.dp,
+            shadowElevation = if (selected) 10.dp else 2.dp,
+            color = surfaceColor,
+            border = borderStroke
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEdit() }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                SessionAvatar(name = session.displayName)
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = session.displayName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Switch(checked = selected, onCheckedChange = onToggleSelection)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    SessionStatusLabel(statusInfo)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionAvatar(name: String) {
+    val initials = remember(name) { initialFor(name) }
+    val style = remember(name) {
+        avatarStyles[(name.hashCode().absoluteValue) % avatarStyles.size]
+    }
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(style.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = initials,
+            style = MaterialTheme.typography.titleMedium,
+            color = style.foreground
+        )
+    }
+}
+
+@Composable
+private fun SessionStatusLabel(statusInfo: SessionStatusUi) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        statusInfo.dotColor?.let { dot ->
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(dot)
+            )
+        }
+        Text(
+            text = statusInfo.text,
+            style = MaterialTheme.typography.bodySmall,
+            color = statusInfo.color
+        )
+    }
+}
+
+@Composable
+private fun SessionStatusInfo(session: UserSession): SessionStatusUi {
+    return if (session.accessToken.isNullOrEmpty()) {
+        SessionStatusUi(
+            text = "等待手动验证",
+            color = Color(0xFFF97316),
+            dotColor = Color(0xFFF97316)
+        )
+    } else {
+        SessionStatusUi(
+            text = "已保存认证信息",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            dotColor = null
+        )
+    }
+}
+
+private data class SessionStatusUi(
+    val text: String,
+    val color: Color,
+    val dotColor: Color?
+)
+
+private fun initialFor(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "?"
+    return trimmed.first().toString().uppercase(Locale.getDefault())
+}
+
+private data class AvatarStyle(val background: Color, val foreground: Color)
+
+private val avatarStyles = listOf(
+    AvatarStyle(Color(0xFFE6DEFF), Color(0xFF6A49FF)),
+    AvatarStyle(Color(0xFFFCE1EF), Color(0xFFD23C7B)),
+    AvatarStyle(Color(0xFFFFE4D6), Color(0xFFC05B29)),
+    AvatarStyle(Color(0xFFE1F6F3), Color(0xFF1E8A78)),
+    AvatarStyle(Color(0xFFE0ECFF), Color(0xFF1E5BB8)),
+    AvatarStyle(Color(0xFFF7E5FF), Color(0xFF8A32B8))
+)
+
+@Composable
+private fun FloatingDock(
+    selectedCount: Int,
+    onAdd: () -> Unit,
+    onScan: () -> Unit
+) {
+    val scanEnabled = selectedCount > 0
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(40.dp),
+            color = Color(0xFFF9FAFF),
+            tonalElevation = 8.dp,
+            shadowElevation = 12.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DockButton(
+                    modifier = Modifier.weight(1f),
+                    label = "添加账号",
+                    icon = Icons.Outlined.Add,
+                    onClick = onAdd
+                )
+                GradientDockButton(
+                    modifier = Modifier.weight(1.2f),
+                    enabled = scanEnabled,
+                    label = if (selectedCount == 0) "一键签到" else "一键签到（$selectedCount）",
+                    onClick = onScan
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockButton(
+    modifier: Modifier = Modifier,
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xFFF1F5F9),
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = Color(0xFF475569))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                label,
+                color = Color(0xFF475569),
+                style = MaterialTheme.typography.titleSmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun GradientDockButton(
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit
+) {
+    val gradientColors = if (enabled) {
+        listOf(Color(0xFF7C3AED), Color(0xFF9333EA))
+    } else {
+        listOf(Color(0xFFD7DDED), Color(0xFFD7DDED))
+    }
+    val contentColor = if (enabled) Color.White else Color(0xFF94A3B8)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(32.dp))
+            .background(Brush.horizontalGradient(gradientColors))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 24.dp)
+            .height(54.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, tint = contentColor)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                label,
+                color = contentColor,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditingDialog(
+    editingSession: UserSession?,
+    editDisplayName: String,
+    editAccessToken: String,
+    onDisplayNameChange: (String) -> Unit,
+    onAccessTokenChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: (UserSession) -> Unit
+) {
+    if (editingSession == null) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onSave(editingSession) }) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        title = { Text("编辑用户信息") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = editDisplayName,
+                    onValueChange = onDisplayNameChange,
+                    label = { Text("用户昵称") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = editAccessToken,
+                    onValueChange = onAccessTokenChange,
+                    label = { Text("认证信息") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 6
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun AddUserDialog(
+    visible: Boolean,
+    displayName: String,
+    accessToken: String,
+    onDisplayNameChange: (String) -> Unit,
+    onAccessTokenChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    if (!visible) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onConfirm) { Text("添加") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        title = { Text("手动录入 Cookies") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = onDisplayNameChange,
+                    label = { Text("用户昵称") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = accessToken,
+                    onValueChange = onAccessTokenChange,
+                    label = { Text("认证信息 (Cookies)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 6
+                )
+            }
+        }
+    )
 }

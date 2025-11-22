@@ -150,7 +150,7 @@ fun AboutScreen(
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "2.1.0(20251031)",
+                        text = "3.0.0(20251120)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center

@@ -5,25 +5,38 @@ import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.WebResourceRequest
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.PhoneIphone
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -36,13 +49,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.FormBody
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OAuth2LoginScreen(
     repository: SessionRepository,
     @Suppress("UNUSED_PARAMETER") initialUrl: String,
     onSaved: () -> Unit
 ) {
-    val nameState: MutableState<String> = remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val currentUrl: MutableState<String> = remember { mutableStateOf("") }
     val webViewRef: MutableState<WebView?> = remember { mutableStateOf(null) }
@@ -286,254 +299,262 @@ fun OAuth2LoginScreen(
                     kotlinx.coroutines.delay(1000) // 等待1秒
                 }
                 countdown.value = 0
-                extractCookiesAndSave(nameState, repository, onSaved, webViewRef.value!!)
+                extractCookiesAndSave(repository, onSaved, webViewRef.value!!)
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("统一认证登录", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        
-        // Current URL banner
-        Text(
-            text = currentUrl.value.ifEmpty { loginUrl },
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(vertical = 4.dp)
-        )
+    fun applyUserAgentMode(targetMobile: Boolean) {
+        if (isMobileUA.value == targetMobile) return
+        isMobileUA.value = targetMobile
+        webViewRef.value?.let { webView ->
+            webView.clearCache(true)
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            cookieManager.removeAllCookies(null)
+            cookieManager.flush()
 
-        Spacer(Modifier.height(4.dp))
+            webView.settings.userAgentString = getUserAgent()
+            webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            println("切换User-Agent: ${getUserAgent()}")
 
-        AndroidView(factory = { ctx ->
-            WebView(ctx).apply {
-                webViewRef.value = this
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                settings.loadsImagesAutomatically = true
-                settings.javaScriptCanOpenWindowsAutomatically = true
-                settings.setSupportMultipleWindows(true)
-                // 设置初始User-Agent
-                settings.userAgentString = getUserAgent()
-                // 强制刷新缓存以确保UA生效
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
-                // 设置viewport以模拟不同屏幕尺寸
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                
-                // 添加JavaScript接口，用于强制注入代码
-                addJavascriptInterface(object {
-                    @android.webkit.JavascriptInterface
-                    fun forceOverride() {
-                        // 这个方法会在JavaScript中调用
-                    }
-                }, "AndroidOverride")
-                
-                webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        super.onPageStarted(view, url, favicon)
-                        if (url != null) currentUrl.value = url
-                        
-                        // 在页面开始加载时就注入检测覆盖代码
-                        view?.let { webView ->
-                            // 立即注入早期覆盖代码
-                            val earlyOverrideJS = getEarlyOverrideJS()
-                            webView.evaluateJavascript(earlyOverrideJS, null)
-                            println("页面开始加载时注入早期覆盖JS: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
-                            
-                            // 延迟一点再注入一次，确保覆盖生效
-                            webView.postDelayed({
-                                webView.evaluateJavascript(earlyOverrideJS, null)
-                                println("延迟注入早期覆盖JS: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
-                            }, 100)
-                        }
-                    }
-                    
-                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                        if (url == null) return false
-                        currentUrl.value = url
-                        
-                        // 检查是否成功登录到Canvas（包含Canvas的URL）
-                        if (url.startsWith("https://canvas.tongji.edu.cn/") == true && 
-                            !url.contains("login") && 
-                            !url.contains("oauth2") &&
-                            !url.contains("openid_connect")) {
-                            // 登录成功，延迟提取cookies
-                            println("shouldOverrideUrlLoading检测到Canvas登录成功: $url")
-                            delayedExtractCookies()
-                        }
-                        
-                        // 也检查其他可能的登录成功URL
-                        if (url.contains("canvas.tongji.edu.cn") == true && 
-                            !url.contains("login") && 
-                            !url.contains("oauth2") &&
-                            !url.contains("openid_connect")) {
-                            println("shouldOverrideUrlLoading检测到可能的Canvas登录: $url")
-                        }
-                        
-                        return !(url.startsWith("http://") || url.startsWith("https://"))
-                    }
-                    
-                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                        val u = request?.url?.toString() ?: return false
-                        currentUrl.value = u
-                        return !(u.startsWith("http://") || u.startsWith("https://"))
-                    }
-                    
-                    
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        if (url != null) currentUrl.value = url
-                        
-                        // 注入屏幕尺寸模拟JavaScript
-                        view?.let { webView ->
-                            // 立即注入所有覆盖代码
-                            val screenSimulationJS = getScreenSimulationJS()
-                            webView.evaluateJavascript(screenSimulationJS, null)
-                            println("注入屏幕尺寸模拟JS: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
-                            
-                            // 额外注入检测覆盖代码
-                            val detectionOverrideJS = getDetectionOverrideJS()
-                            webView.evaluateJavascript(detectionOverrideJS, null)
-                            
-                            // 再次注入早期覆盖代码，确保完全覆盖
-                            val earlyOverrideJS = getEarlyOverrideJS()
-                            webView.evaluateJavascript(earlyOverrideJS, null)
-                            
-                            // 延迟再次注入，确保设置生效
-                            webView.postDelayed({
-                                webView.evaluateJavascript(earlyOverrideJS, null)
-                                webView.evaluateJavascript(detectionOverrideJS, null)
-                                println("页面完成后延迟强化注入: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
-                            }, 500)
-                        }
-                        
-                        // 检查是否成功登录到Canvas
-                        if (url!!.startsWith("https://canvas.tongji.edu.cn/") == true &&
-                            !url.contains("login") && 
-                            !url.contains("oauth2") &&
-                            !url.contains("openid_connect")) {
-                            // 登录成功，延迟提取cookies
-                            println("onPageFinished检测到Canvas登录成功: $url")
-                            delayedExtractCookies()
-                        }
-                        
-                        // 也检查其他可能的登录成功URL
-                        if (url.contains("canvas.tongji.edu.cn") == true && 
-                            !url.contains("login") && 
-                            !url.contains("oauth2") &&
-                            !url.contains("openid_connect")) {
-                            println("onPageFinished检测到可能的Canvas登录: $url")
-                        }
+            isLoginDetected.value = false
+            countdown.value = 0
+
+            webView.loadUrl(loginUrl)
+            println("重新加载URL: $loginUrl")
+
+            webView.postDelayed({
+                val earlyOverrideJS = getEarlyOverrideJS()
+                webView.evaluateJavascript(earlyOverrideJS, null)
+                println("切换后立即注入覆盖JS: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
+            }, 50)
+        }
+    }
+
+    val statusMessage = if (isLoginDetected.value) {
+        if (countdown.value > 0) {
+            "登录成功！系统将在 ${countdown.value} 秒后自动提取认证信息。"
+        } else {
+            "正在提取认证信息..."
+        }
+    } else {
+        "请在下方统一认证页面完成登录，系统会自动捕获 Cookies。"
+    }
+
+    Scaffold(
+        topBar = {
+            androidx.compose.material3.LargeTopAppBar(
+                title = {
+                    Column {
+                        Text("统一认证登录", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = currentUrl.value.ifEmpty { loginUrl },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
-                // 初始化WebView（清除残留数据并加载URL）
-                initializeWebView()
-            }
-        }, modifier = Modifier.weight(1f))
-
-        OutlinedTextField(
-            value = nameState.value,
-            onValueChange = { nameState.value = it },
-            label = { Text("用户昵称（可选）") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        
-        Spacer(Modifier.height(8.dp))
-        
-        // UA切换开关
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("操作提示", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "1. 使用统一认证账号登录 Canvas，系统会自动捕获 Cookies。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "2. 若页面显示异常，可切换下方浏览器模式以匹配移动或桌面站点。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            SingleChoiceSegmentedButtonRow {
+                SegmentedButton(
+                    selected = isMobileUA.value,
+                    onClick = { applyUserAgentMode(true) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    icon = { Icon(Icons.Outlined.PhoneIphone, contentDescription = null) }
+                ) {
+                    Text("移动端")
+                }
+                SegmentedButton(
+                    selected = !isMobileUA.value,
+                    onClick = { applyUserAgentMode(false) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    icon = { Icon(Icons.Outlined.Computer, contentDescription = null) }
+                ) {
+                    Text("桌面端")
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(
+                            text = if (currentUrl.value.isBlank()) "等待加载页面..." else "地址已加载",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) }
+                )
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(
+                            if (isLoginDetected.value) {
+                                if (countdown.value > 0) "自动保存倒计时 ${countdown.value}s" else "已捕获，正在保存"
+                            } else {
+                                "等待登录成功"
+                            }
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (isLoginDetected.value) Icons.Outlined.Verified else Icons.Outlined.Schedule,
+                            contentDescription = null
+                        )
+                    }
+                )
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 360.dp),
+                shape = RoundedCornerShape(32.dp),
+                tonalElevation = 4.dp
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                webViewRef.value = this
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                settings.loadsImagesAutomatically = true
+                                settings.javaScriptCanOpenWindowsAutomatically = true
+                                settings.setSupportMultipleWindows(true)
+                                settings.userAgentString = getUserAgent()
+                                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                settings.useWideViewPort = true
+                                settings.loadWithOverviewMode = true
+                                addJavascriptInterface(object {
+                                    @android.webkit.JavascriptInterface
+                                    fun forceOverride() {}
+                                }, "AndroidOverride")
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                        super.onPageStarted(view, url, favicon)
+                                        if (url != null) currentUrl.value = url
+                                        view?.let { webView ->
+                                            val earlyOverrideJS = getEarlyOverrideJS()
+                                            webView.evaluateJavascript(earlyOverrideJS, null)
+                                            webView.postDelayed({
+                                                webView.evaluateJavascript(earlyOverrideJS, null)
+                                            }, 100)
+                                        }
+                                    }
+
+                                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                        if (url == null) return false
+                                        currentUrl.value = url
+                                        if (url.startsWith("https://canvas.tongji.edu.cn/") &&
+                                            !url.contains("login") &&
+                                            !url.contains("oauth2") &&
+                                            !url.contains("openid_connect")
+                                        ) {
+                                            println("shouldOverrideUrlLoading检测到Canvas登录成功: $url")
+                                            delayedExtractCookies()
+                                        }
+                                        return !(url.startsWith("http://") || url.startsWith("https://"))
+                                    }
+
+                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        val u = request?.url?.toString() ?: return false
+                                        currentUrl.value = u
+                                        return !(u.startsWith("http://") || u.startsWith("https://"))
+                                    }
+
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        if (url != null) currentUrl.value = url
+                                        view?.let { webView ->
+                                            val screenSimulationJS = getScreenSimulationJS()
+                                            webView.evaluateJavascript(screenSimulationJS, null)
+                                            val detectionOverrideJS = getDetectionOverrideJS()
+                                            val earlyOverrideJS = getEarlyOverrideJS()
+                                            webView.evaluateJavascript(detectionOverrideJS, null)
+                                            webView.evaluateJavascript(earlyOverrideJS, null)
+                                            webView.postDelayed({
+                                                webView.evaluateJavascript(earlyOverrideJS, null)
+                                                webView.evaluateJavascript(detectionOverrideJS, null)
+                                            }, 500)
+                                        }
+                                        if (url?.startsWith("https://canvas.tongji.edu.cn/") == true &&
+                                            !url.contains("login") &&
+                                            !url.contains("oauth2") &&
+                                            !url.contains("openid_connect")
+                                        ) {
+                                            println("onPageFinished检测到Canvas登录成功: $url")
+                                            delayedExtractCookies()
+                                        }
+                                    }
+                                }
+                                initializeWebView()
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (!isLoginDetected.value) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
             Text(
-                text = if (isMobileUA.value) "手机模式" else "电脑模式",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-            Switch(
-                checked = isMobileUA.value,
-                onCheckedChange = { 
-                    isMobileUA.value = it
-                    // 切换UA后重新初始化WebView并重新加载URL
-                    webViewRef.value?.let { webView ->
-                        // 先清除缓存和cookies
-                        webView.clearCache(true)
-                        val cookieManager = android.webkit.CookieManager.getInstance()
-                        cookieManager.removeAllCookies(null)
-                        cookieManager.flush()
-                        
-                        // 设置新的UA
-                        webView.settings.userAgentString = getUserAgent()
-                        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-                        println("切换User-Agent: ${getUserAgent()}")
-                        
-                        // 重置登录状态
-                        isLoginDetected.value = false
-                        countdown.value = 0
-                        
-                        // 重新加载URL以应用新的UA
-                        webView.loadUrl(loginUrl)
-                        println("重新加载URL: $loginUrl")
-                        
-                        // 立即注入覆盖代码，不等待页面加载
-                        webView.postDelayed({
-                            val earlyOverrideJS = getEarlyOverrideJS()
-                            webView.evaluateJavascript(earlyOverrideJS, null)
-                            println("切换后立即注入覆盖JS: ${if (isMobileUA.value) "手机模式" else "电脑模式"}")
-                        }, 50)
-                    }
-                }
+                text = statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isLoginDetected.value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        
-        Spacer(Modifier.height(8.dp))
-        
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    scope.launch {
-                        extractCookiesAndSave(nameState, repository, onSaved, webViewRef.value!!)
-                    }
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("手动保存认证信息")
-            }
-            
-            OutlinedButton(
-                onClick = {
-                    initializeWebView()
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("清除登录状态")
-            }
-        }
-        
-        Spacer(Modifier.height(8.dp))
-        
-        Text(
-            text = if (isLoginDetected.value) {
-                if (countdown.value > 0) {
-                    "登录成功！系统将在 ${countdown.value} 秒后自动提取认证信息..."
-                } else {
-                    "正在提取认证信息..."
-                }
-            } else {
-                "请完成登录流程，系统将在登录成功后等待5秒自动捕获认证信息，或点击上方按钮手动保存/清除"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = if (isLoginDetected.value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
 // 提取cookies并保存的函数
 private suspend fun extractCookiesAndSave(
-    nameState: MutableState<String>,
     repository: SessionRepository,
     onSaved: () -> Unit,
     @Suppress("UNUSED_PARAMETER") webView: WebView
@@ -560,7 +581,7 @@ private suspend fun extractCookiesAndSave(
         if (allCookies.isNotEmpty()) {
             // 将cookies转换为简单的认证标识
             val cookieString = allCookies.joinToString("; ")
-            val display = if (nameState.value.isNotBlank()) nameState.value else "用户${System.currentTimeMillis()}"
+            val display = "用户${System.currentTimeMillis()}"
             
             println("保存用户: $display, cookies: $cookieString")
             

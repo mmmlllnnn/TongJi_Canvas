@@ -4,23 +4,46 @@ import android.graphics.Bitmap
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mln.tongji_canvas.data.SessionRepository
@@ -28,7 +51,11 @@ import com.mln.tongji_canvas.data.UserSession
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import com.mln.tongji_canvas.ui.components.LoadingShimmerLines
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BatchSignScreen(
     repository: SessionRepository,
@@ -43,6 +70,7 @@ fun BatchSignScreen(
     val isProcessingQueue = remember { mutableStateOf(false) } // 是否正在处理队列
     val forceLoadTrigger = remember { mutableStateOf(0) } // 强制加载触发器
     val sessionHashes = remember { mutableStateMapOf<String, String>() } // 存储用户认证信息的哈希值
+    val expandedCards = remember { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(Unit) {
         val allSessions = repository.getAllSessions()
@@ -70,6 +98,14 @@ fun BatchSignScreen(
         forceLoadTrigger.value++
     }
 
+    fun triggerRetry(sessionId: String) {
+        val session = sessions[sessionId] ?: return
+        val webView = webViewInstances[sessionId] ?: return
+        states[sessionId] = "loading"
+        cookieSetFlags[sessionId] = false
+        applyCookiesAndLoad(webView, session, targetUrl)
+    }
+
     // 监听用户认证信息变化，强制重新创建WebView
     LaunchedEffect(sessions) {
         sessions.forEach { (id, session) ->
@@ -94,75 +130,246 @@ fun BatchSignScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("批量签到 (OAuth2.0)", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(8.dp))
-        Text(targetUrl, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(8.dp))
+    val successCount = states.values.count { it == "success" }
+    val failureCount = states.values.count { it == "fail" }
+    val scrollState = rememberScrollState()
+    val topBarState = rememberTopAppBarState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topBarState)
 
-        // 使用Column替代LazyColumn，强制加载所有WebView，添加滚动支持
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            androidx.compose.material3.LargeTopAppBar(
+                title = {
+                    Column {
+                        Text("批量签到", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            text = targetUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { inner ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .padding(inner)
+                .verticalScroll(scrollState)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            BatchSummaryCard(
+                total = sessions.size,
+                success = successCount,
+                failure = failureCount,
+                targetUrl = targetUrl
+            )
+
             sessions.values.toList().forEach { session ->
-                ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(session.displayName, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(4.dp))
-                        
-                        // Show cookie status
-                        val cookieStatus = if (session.accessToken?.isNotEmpty() ?: false) {
-                            "已保存认证信息"
-                        } else {
-                            "未保存认证信息"
-                        }
-                        Text(cookieStatus, style = MaterialTheme.typography.bodySmall)
-                        
-                        Spacer(Modifier.height(4.dp))
-                        val status = states[session.id]
-                        when (status) {
-                            "loading" -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                            "success" -> Text("签到成功", color = MaterialTheme.colorScheme.primary)
-                            "fail" -> Text("签到失败", color = MaterialTheme.colorScheme.error)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        
-                        // Use WebView with cookies for authenticated requests
-                        AndroidView(
-                            factory = { ctx ->
-                                // 检查是否已有WebView实例
-                                webViewInstances[session.id]?.let { existingWebView ->
-                                    println("复用现有WebView实例 for ${session.displayName}")
-                                    return@AndroidView existingWebView
-                                }
-                                
-                                // 创建新的WebView实例
-                                println("为用户 ${session.displayName} 创建新的WebView实例")
-                                val newWebView = createCleanWebView(ctx, session, targetUrl, states, webViewInstances, cookieSetFlags, sessions, cookieQueue, isProcessingQueue)
-                                webViewInstances[session.id] = newWebView
-                                newWebView
-                            },
-                            update = { webView ->
-                                // 当WebView更新时，检查是否需要重新设置cookies
-                                val currentHash = (session.accessToken ?: "").hashCode().toString()
-                                val previousHash = sessionHashes[session.id]
-                                
-                                if (cookieSetFlags[session.id] != true || previousHash != currentHash) {
-                                    println("更新WebView时重新设置cookies for ${session.displayName} (认证信息变化: ${previousHash != currentHash})")
-                                    applyCookiesAndLoad(webView, session, targetUrl)
-                                    cookieSetFlags[session.id] = true
-                                    sessionHashes[session.id] = currentHash
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(300.dp)
-                        )
-                    }
+                val expanded = expandedCards.getOrPut(session.id) { false }
+                SessionSignCard(
+                    session = session,
+                    status = states[session.id] ?: "loading",
+                    expanded = expanded,
+                    onToggleExpanded = { expandedCards[session.id] = !(expandedCards[session.id] ?: false) },
+                    onRetry = { triggerRetry(session.id) }
+                ) { modifier ->
+                SessionWebView(
+                    session = session,
+                    modifier = modifier,
+                    webViewInstances = webViewInstances,
+                    cookieSetFlags = cookieSetFlags,
+                    sessionHashes = sessionHashes,
+                    states = states,
+                    targetUrl = targetUrl,
+                    cookieQueue = cookieQueue,
+                    isProcessingQueue = isProcessingQueue
+                )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun BatchSummaryCard(
+    total: Int,
+    success: Int,
+    failure: Int,
+    targetUrl: String
+) {
+    val progress = if (total == 0) 0f else success.toFloat() / total.toFloat()
+    Surface(
+        shape = RoundedCornerShape(32.dp),
+        tonalElevation = 3.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("签到进度", style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("总计 $total", style = MaterialTheme.typography.bodyMedium)
+                Text("成功 $success", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                if (failure > 0) {
+                    Text("失败 $failure", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            AssistChip(
+                onClick = {},
+                enabled = false,
+                label = {
+                    Text(
+                        text = targetUrl,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionSignCard(
+    session: UserSession,
+    status: String,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onRetry: () -> Unit,
+    webContent: @Composable (Modifier) -> Unit
+) {
+    val (statusLabel, statusColor, statusIcon) = when (status) {
+        "success" -> Triple("签到成功", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
+        "fail" -> Triple("签到失败", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
+        else -> Triple("签到中", MaterialTheme.colorScheme.tertiary, Icons.Outlined.Schedule)
+    }
+    val cookieStatus = if (session.accessToken.isNullOrEmpty()) "未保存认证信息" else "已保存认证信息"
+    val webViewHeight by animateDpAsState(
+        targetValue = if (expanded) 320.dp else 1.dp,
+        label = "${session.id}_webHeight"
+    )
+    val webViewAlpha by animateFloatAsState(
+        targetValue = if (expanded) 1f else 0f,
+        label = "${session.id}_webAlpha"
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(session.displayName, style = MaterialTheme.typography.titleMedium)
+                    Text(cookieStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text(statusLabel) },
+                    leadingIcon = { Icon(statusIcon, contentDescription = null, tint = statusColor) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = statusColor.copy(alpha = 0.12f),
+                        labelColor = statusColor
+                    )
+                )
+            }
+
+            if (status == "loading") {
+                LoadingShimmerLines(lines = 3, modifier = Modifier.fillMaxWidth())
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalButton(onClick = onToggleExpanded) {
+                    Text(if (expanded) "收起调试" else "查看调试")
+                }
+                if (status == "fail") {
+                    OutlinedButton(onClick = onRetry) {
+                        Text("重试")
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(webViewHeight)
+                    .clip(RoundedCornerShape(24.dp))
+                    .alpha(webViewAlpha)
+            ) {
+                webContent(Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionWebView(
+    session: UserSession,
+    modifier: Modifier,
+    webViewInstances: MutableMap<String, WebView>,
+    cookieSetFlags: MutableMap<String, Boolean>,
+    sessionHashes: MutableMap<String, String>,
+    states: MutableMap<String, String>,
+    targetUrl: String,
+    cookieQueue: MutableList<String>,
+    isProcessingQueue: MutableState<Boolean>
+) {
+    AndroidView(
+        factory = { ctx ->
+            webViewInstances[session.id]?.let { existingWebView ->
+                println("复用现有WebView实例 for ${session.displayName}")
+                return@AndroidView existingWebView
+            }
+            println("为用户 ${session.displayName} 创建新的WebView实例")
+            val newWebView = createCleanWebView(
+                ctx,
+                session,
+                targetUrl,
+                states,
+                webViewInstances,
+                cookieSetFlags,
+                sessions = mutableMapOf(),
+                cookieQueue = cookieQueue,
+                isProcessingQueue = isProcessingQueue
+            )
+            webViewInstances[session.id] = newWebView
+            newWebView
+        },
+        update = { webView ->
+            val currentHash = (session.accessToken ?: "").hashCode().toString()
+            val previousHash = sessionHashes[session.id]
+            if (cookieSetFlags[session.id] != true || previousHash != currentHash) {
+                println("更新WebView时重新设置cookies for ${session.displayName} (认证信息变化: ${previousHash != currentHash})")
+                applyCookiesAndLoad(webView, session, targetUrl)
+                cookieSetFlags[session.id] = true
+                sessionHashes[session.id] = currentHash
+            }
+        },
+        modifier = modifier
+    )
 }
 
 // 创建干净的WebView
@@ -268,7 +475,15 @@ private fun createWebViewClient(
         
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
-            states[session.id] = "success"
+            view?.let { webView ->
+                webView.evaluateJavascript("(function() { return document.body.innerText || document.body.textContent || ''; })();") { content ->
+                    val pageText = content?.removeSurrounding("\"")?.replace("\\n", " ") ?: ""
+                    val isSuccess = pageText.contains("签到成功") || pageText.contains("已签过")
+                    states[session.id] = if (isSuccess) "success" else "fail"
+                }
+            } ?: run {
+                states[session.id] = "fail"
+            }
         }
         
         @Deprecated("Deprecated in Java")
