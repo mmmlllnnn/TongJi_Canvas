@@ -4,11 +4,13 @@
 
 ## ✨ 项目简介
 
-本应用实现了多人签到功能：多个用户事先通过统一认证平台登录，然后APP分别拦截并保存好每个用户的认证信息，用这个APP扫描二维码，可以依次替换认证信息打开，完成多个人的签到。
+本应用实现了多人签到功能：多个用户事先通过统一认证平台登录，然后APP分别拦截并保存好每个用户的认证信息，用这个APP扫描二维码，可以并发完成多个人的签到。
+
+认证信息永久有效，只需获取一次。
 
 
 ## 📖 使用指南
-1. 点击左下方 **添加账号**，点击“在线登陆添加”进入重新设计的统一认证登录页，可一键切换移动/桌面模式（支持微信扫码登录）。
+1. 点击左下方 **添加账号**，点击“在线登陆添加”进入统一认证登录页，可一键切换移动/桌面模式（支持微信扫码登录）。
 2. 登录成功后等待 5 秒，系统会自动提取认证信息。
 3. 回到主界面，在卡片中管理账号，开启需要参与本次签到的用户，点击 **一键签到** 完成批量签到。
 4. 如需手动录入 Cookies，使用 添加账号-手动录入Cookies 按钮。
@@ -23,7 +25,7 @@
 
 ✅ 新的UI<br>
 ✅ 优化动画和操作逻辑<br>
-✅ 增加二维码识别速度和准确率<br>
+✅ 大幅增加二维码识别速度和准确率<br>
 
 <img src="./pic/v3.0.0.jpg" width="40%" alt="新版3.0.0">
 
@@ -61,7 +63,7 @@ https://你的域名/index.html?_canvas_middle_session=xxxxxxx
 
 
 
-在线版访问：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)
+在线版访问（自己搭的 不排除某天关停）：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)
 
 
 
