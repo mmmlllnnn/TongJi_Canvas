@@ -20,4 +20,8 @@ data class OAuth2Tokens(
     val tokenType: String = "Bearer"
 )
 
-
+data class Course(
+    val id: String,
+    val name: String,
+    val memberIds: List<String> = emptyList()
+)
