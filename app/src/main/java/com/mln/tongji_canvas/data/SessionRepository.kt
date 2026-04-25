@@ -112,10 +112,79 @@ class SessionRepository(private val context: Context) {
         }
     }
 
-    companion object { 
+    // ========== 课程/分组管理 ==========
+
+    suspend fun getAllCourses(): List<Course> = withContext(Dispatchers.IO) {
+        val json = prefs.getString(COURSES_KEY, null) ?: return@withContext emptyList()
+        val arr = JSONArray(json)
+        val list = mutableListOf<Course>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val memberIds = mutableListOf<String>()
+            if (o.has("memberIds")) {
+                val memberArr = o.getJSONArray("memberIds")
+                for (j in 0 until memberArr.length()) {
+                    memberIds.add(memberArr.getString(j))
+                }
+            }
+            list += Course(
+                id = o.getString("id"),
+                name = o.getString("name"),
+                memberIds = memberIds
+            )
+        }
+        list
+    }
+
+    suspend fun addCourse(name: String): Course = withContext(Dispatchers.IO) {
+        val all = getAllCourses().toMutableList()
+        val course = Course(id = UUID.randomUUID().toString(), name = name)
+        all.add(course)
+        saveAllCourses(all)
+        course
+    }
+
+    suspend fun updateCourse(course: Course) = withContext(Dispatchers.IO) {
+        val all = getAllCourses().toMutableList()
+        val idx = all.indexOfFirst { it.id == course.id }
+        if (idx != -1) {
+            all[idx] = course
+            saveAllCourses(all)
+        }
+    }
+
+    suspend fun removeCourse(id: String) = withContext(Dispatchers.IO) {
+        val all = getAllCourses().filterNot { it.id == id }
+        saveAllCourses(all)
+    }
+
+    private fun saveAllCourses(list: List<Course>) {
+        val arr = JSONArray()
+        list.forEach { c ->
+            val o = JSONObject()
+            o.put("id", c.id)
+            o.put("name", c.name)
+            val memberArr = JSONArray()
+            c.memberIds.forEach { memberArr.put(it) }
+            o.put("memberIds", memberArr)
+            arr.put(o)
+        }
+        prefs.edit().putString(COURSES_KEY, arr.toString()).apply()
+    }
+
+    // 保存当前激活的课程ID（null表示"全部人员"模式）
+    fun saveActiveCourseId(courseId: String?) {
+        prefs.edit().putString(ACTIVE_COURSE_KEY, courseId).apply()
+    }
+
+    fun getActiveCourseId(): String? {
+        return prefs.getString(ACTIVE_COURSE_KEY, null)
+    }
+
+    companion object {
         private const val KEY = "sessions_json"
         private const val SELECTED_USERS_KEY = "selected_user_ids"
+        private const val COURSES_KEY = "courses_json"
+        private const val ACTIVE_COURSE_KEY = "active_course_id"
     }
 }
-
-
