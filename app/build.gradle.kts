@@ -14,8 +14,8 @@ android {
         applicationId = "com.mln.tongji_canvas"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20251120
-        versionName = "3.0.0"
+        versionCode = 20260425
+        versionName = "3.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }
@@ -46,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     
     packaging {

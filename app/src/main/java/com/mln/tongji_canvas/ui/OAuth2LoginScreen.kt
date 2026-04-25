@@ -363,8 +363,8 @@ fun OAuth2LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
@@ -372,18 +372,18 @@ fun OAuth2LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("操作提示", style = MaterialTheme.typography.titleMedium)
+                    Text("操作提示", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "1. 使用统一认证账号登录 Canvas，系统会自动捕获 Cookies。",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         "2. 若页面显示异常，可切换下方浏览器模式以匹配移动或桌面站点。",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -448,7 +448,8 @@ fun OAuth2LoginScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 360.dp),
+                    .weight(1f)
+                    .heightIn(min = 500.dp),
                 shape = RoundedCornerShape(32.dp),
                 tonalElevation = 4.dp
             ) {

@@ -1,3 +1,32 @@
 <resources>
     <string name="app_name">BatchTJ</string>
+    <string name="about_title">关于应用</string>
+    <string name="about_back">返回</string>
+    <string name="about_app_icon_desc">App Icon</string>
+    <string name="about_app_name">BatchTJ</string>
+    <string name="about_section_about">About</string>
+
+
+    <string name="about_description">
+    免责声明：\n
+    本应用仅供学习与研究使用，请勿用于任何违反学校规定及法律法规的行为。\n
+    使用本应用产生的任何后果由使用者自行承担，开发者不承担任何责任。\n\n
+    功能：\n
+    为同济大学 Canvas 系统课堂签到场景设计的 Android 批量签到应用。\n\n
+    使用：\n
+        1. 点击左下方「添加账号」，选择「在线登录添加」进入统一认证登录页，可切换移动/桌面模式（支持微信扫码登录）。\n
+        2. 登录成功后等待 5 秒，系统会自动提取认证信息。\n
+        3. 返回主界面，在卡片中管理账号，开启需要参与本次签到的用户，点击「一键签到」完成批量签到。\n
+        4. 如需手动录入 Cookies，可使用「添加账号 → 手动录入 Cookies」。\n\n
+    Tips：\n
+    统一认证界面登录成功后会自动跳转至不存在的页面。\n
+    本应用仅保存 Canvas 系统认证信息，不会保存其他系统的认证信息。
+    </string>
+
+    <string name="about_section_developer">Developer</string>
+    <string name="about_developer_avatar_desc">Developer Avatar</string>
+    <string name="about_developer_name">mmmlllnnn</string>
+    <string name="about_github_label">Github &amp; Feedback</string>
+    <string name="about_github_url">https://github.com/mmmlllnnn</string>
+    <string name="about_dynamic_content_url">https://raw.githubusercontent.com/mmmlllnnn/TongJi_Canvas/refs/heads/main/explanation.md</string>
 </resources>
