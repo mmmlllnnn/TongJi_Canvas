@@ -33,10 +33,13 @@ v3.0.0
 ✅ 新的UI<br>
 ✅ 优化动画和操作逻辑<br>
 ✅ 大幅增加二维码识别速度和准确率<br>
-<tr>
-<td><img src="./pic/v3.0.0.jpg" width="40%" alt="新版3.0.0"></td>
-<td><img src="./pic/v3.2.0.png" width="40%" alt="新版3.2.0"></td>
-</tr>
+
+<table>
+  <tr>
+    <td align="center"><img src="./pic/v3.0.0.jpg" width="100%" alt="新版3.0.0"></td>
+    <td align="center"><img src="./pic/v3.2.0.png" width="100%" alt="新版3.2.0"></td>
+  </tr>
+</table>
 
 左滑信息卡片🈶删除按钮
 
