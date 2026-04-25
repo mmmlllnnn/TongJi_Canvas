@@ -6,6 +6,8 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -31,7 +34,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -113,6 +115,7 @@ fun MainScreen(
     var sessions by remember { mutableStateOf<List<UserSession>>(emptyList()) }
     var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var selectedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var checkedCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingSession by remember { mutableStateOf<UserSession?>(null) }
     var editDisplayName by remember { mutableStateOf("") }
     var editAccessToken by remember { mutableStateOf("") }
@@ -125,13 +128,13 @@ fun MainScreen(
     // 课程相关状态
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var addCourseName by remember { mutableStateOf("") }
+    var addCourseMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingCourse by remember { mutableStateOf<Course?>(null) }
     var editCourseName by remember { mutableStateOf("") }
     var editCourseMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     // 折叠状态
     var allUsersExpanded by remember { mutableStateOf(true) }
-    var expandedCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val previousUserIds = remember { mutableSetOf<String>() }
     var isInitialized by remember { mutableStateOf(false) }
@@ -145,30 +148,20 @@ fun MainScreen(
 
     fun exportSessionsToClipboard() {
         scope.launch {
-            val exportable = sessions.filter { !it.accessToken.isNullOrBlank() }
+            val exportable = sessions
             if (exportable.isEmpty()) {
                 snackbarHostState.showSnackbar("暂无可导出的账号")
                 return@launch
             }
-            // 新格式：包含用户和课程信息的完整对象
             val root = JSONObject()
             val usersArray = JSONArray()
             exportable.forEach { user ->
                 val obj = JSONObject()
                 obj.put("displayName", user.displayName)
                 obj.put("accessToken", user.accessToken)
-                // 记录该用户所属的课程名称列表
-                val userCourseNames = JSONArray()
-                courses.filter { it.memberIds.contains(user.id) }.forEach { course ->
-                    userCourseNames.put(course.name)
-                }
-                if (userCourseNames.length() > 0) {
-                    obj.put("courses", userCourseNames)
-                }
                 usersArray.put(obj)
             }
             root.put("users", usersArray)
-            // 导出课程列表（保留空课程信息）
             if (courses.isNotEmpty()) {
                 val coursesArray = JSONArray()
                 courses.forEach { course ->
@@ -183,7 +176,7 @@ fun MainScreen(
                 root.put("courses", coursesArray)
             }
             clipboardManager.setText(AnnotatedString(root.toString()))
-            snackbarHostState.showSnackbar("已复制 ${exportable.size} 个账号及 ${courses.size} 个课程到剪贴板")
+            snackbarHostState.showSnackbar("已导出账号（${exportable.size}个）和课程分组（${courses.size}个）")
         }
     }
 
@@ -198,15 +191,11 @@ fun MainScreen(
                 var imported = 0
                 var coursesImported = 0
 
-                // 尝试新格式（带课程的对象格式）
                 if (raw.startsWith("{")) {
                     val root = JSONObject(raw)
                     val usersArray = root.optJSONArray("users") ?: JSONArray()
 
-                    // 名称 -> 用户ID 映射（用于后续课程成员关联）
                     val nameToIdMap = mutableMapOf<String, String>()
-
-                    // 先导入已有用户的映射
                     sessions.forEach { nameToIdMap[it.displayName] = it.id }
 
                     for (i in 0 until usersArray.length()) {
@@ -225,7 +214,6 @@ fun MainScreen(
                         }
                     }
 
-                    // 导入课程
                     val coursesArray = root.optJSONArray("courses")
                     if (coursesArray != null) {
                         val existingCourses = repository.getAllCourses()
@@ -241,7 +229,6 @@ fun MainScreen(
                                 nameToIdMap[memberName]?.let { memberIds.add(it) }
                             }
 
-                            // 如果同名课程已存在，合并成员；否则新建
                             val existing = existingCourses.firstOrNull { it.name == courseName }
                             if (existing != null) {
                                 val mergedMembers = (existing.memberIds + memberIds).distinct()
@@ -327,6 +314,11 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(courses) {
+        val validCourseIds = courses.map { it.id }.toSet()
+        checkedCourseIds = checkedCourseIds.filter { validCourseIds.contains(it) }.toSet()
+    }
+
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topBarState)
 
@@ -400,16 +392,9 @@ fun MainScreen(
                         sessions = sessions,
                         courses = courses,
                         selectedUserIds = selectedUserIds,
+                        checkedCourseIds = checkedCourseIds,
                         allUsersExpanded = allUsersExpanded,
-                        expandedCourseIds = expandedCourseIds,
                         onToggleAllUsersExpanded = { allUsersExpanded = !allUsersExpanded },
-                        onToggleCourseExpanded = { courseId ->
-                            expandedCourseIds = if (expandedCourseIds.contains(courseId)) {
-                                expandedCourseIds - courseId
-                            } else {
-                                expandedCourseIds + courseId
-                            }
-                        },
                         onToggleSelection = { id, checked ->
                             val updated = if (checked) selectedUserIds + id else selectedUserIds - id
                             selectedUserIds = updated
@@ -421,11 +406,13 @@ fun MainScreen(
                                 sessions.any { it.id == mid }
                             }
                             selectedUserIds = updated
+                            checkedCourseIds = checkedCourseIds + course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onDeselectAllInCourse = { course ->
                             val updated = selectedUserIds - course.memberIds.toSet()
                             selectedUserIds = updated
+                            checkedCourseIds = checkedCourseIds - course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onEditUser = { session ->
@@ -452,13 +439,11 @@ fun MainScreen(
                             editCourseName = course.name
                             editCourseMemberIds = course.memberIds.toSet()
                         },
-                        onDeleteCourse = { course ->
-                            scope.launch {
-                                repository.removeCourse(course.id)
-                                refreshSessions()
-                            }
-                        },
-                        onAddCourse = { showAddCourseDialog = true }
+                        onAddCourse = {
+                            addCourseName = ""
+                            addCourseMemberIds = emptySet()
+                            showAddCourseDialog = true
+                        }
                     )
                 }
             }
@@ -555,18 +540,32 @@ fun MainScreen(
     AddCourseDialog(
         visible = showAddCourseDialog,
         courseName = addCourseName,
+        selectedMemberIds = addCourseMemberIds,
+        allSessions = sessions,
         onCourseNameChange = { addCourseName = it },
+        onMemberToggle = { userId, checked ->
+            addCourseMemberIds = if (checked) addCourseMemberIds + userId else addCourseMemberIds - userId
+        },
         onDismiss = {
             showAddCourseDialog = false
             addCourseName = ""
+            addCourseMemberIds = emptySet()
         },
         onConfirm = {
             if (addCourseName.isNotBlank()) {
                 scope.launch {
-                    repository.addCourse(addCourseName)
+                    val newCourse = repository.addCourse(addCourseName)
+                    if (addCourseMemberIds.isNotEmpty()) {
+                        repository.updateCourse(newCourse.copy(memberIds = addCourseMemberIds.toList()))
+                    }
                     refreshSessions()
                     showAddCourseDialog = false
                     addCourseName = ""
+                    addCourseMemberIds = emptySet()
+                }
+            } else {
+                scope.launch {
+                    snackbarHostState.showSnackbar("请输入课程名称")
                 }
             }
         }
@@ -586,6 +585,15 @@ fun MainScreen(
             editingCourse = null
             editCourseName = ""
             editCourseMemberIds = emptySet()
+        },
+        onDelete = { course ->
+            scope.launch {
+                repository.removeCourse(course.id)
+                refreshSessions()
+                editingCourse = null
+                editCourseName = ""
+                editCourseMemberIds = emptySet()
+            }
         },
         onSave = { course ->
             scope.launch {
@@ -609,17 +617,15 @@ private fun GroupedSessionList(
     sessions: List<UserSession>,
     courses: List<Course>,
     selectedUserIds: Set<String>,
+    checkedCourseIds: Set<String>,
     allUsersExpanded: Boolean,
-    expandedCourseIds: Set<String>,
     onToggleAllUsersExpanded: () -> Unit,
-    onToggleCourseExpanded: (String) -> Unit,
     onToggleSelection: (String, Boolean) -> Unit,
     onSelectAllInCourse: (Course) -> Unit,
     onDeselectAllInCourse: (Course) -> Unit,
     onEditUser: (UserSession) -> Unit,
     onDeleteUser: (UserSession) -> Unit,
     onEditCourse: (Course) -> Unit,
-    onDeleteCourse: (Course) -> Unit,
     onAddCourse: () -> Unit
 ) {
     LazyColumn(
@@ -652,53 +658,20 @@ private fun GroupedSessionList(
 
         // 各个课程分组
         courses.forEach { course ->
-            val courseExpanded = expandedCourseIds.contains(course.id)
             val courseMembers = sessions.filter { course.memberIds.contains(it.id) }
-            val allSelected = courseMembers.isNotEmpty() && courseMembers.all { selectedUserIds.contains(it.id) }
+            val allSelected = checkedCourseIds.contains(course.id)
 
             item(key = "header_course_${course.id}") {
                 Spacer(Modifier.height(4.dp))
                 CourseGroupHeader(
                     course = course,
                     memberCount = courseMembers.size,
-                    expanded = courseExpanded,
                     allSelected = allSelected,
-                    onToggleExpanded = { onToggleCourseExpanded(course.id) },
+                    onClick = { onEditCourse(course) },
                     onToggleSelectAll = {
                         if (allSelected) onDeselectAllInCourse(course) else onSelectAllInCourse(course)
-                    },
-                    onEdit = { onEditCourse(course) },
-                    onDelete = { onDeleteCourse(course) }
+                    }
                 )
-            }
-
-            if (courseExpanded) {
-                if (courseMembers.isEmpty()) {
-                    item(key = "empty_course_${course.id}") {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFF8F9FD)
-                        ) {
-                            Text(
-                                "暂无成员，点击编辑添加",
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                } else {
-                    items(courseMembers, key = { "course_${course.id}_${it.id}" }) { session ->
-                        SwipeableSessionCard(
-                            session = session,
-                            selected = selectedUserIds.contains(session.id),
-                            onToggleSelection = { checked -> onToggleSelection(session.id, checked) },
-                            onEdit = { onEditUser(session) },
-                            onDelete = { onDeleteUser(session) }
-                        )
-                    }
-                }
             }
         }
 
@@ -792,12 +765,9 @@ private fun GroupHeader(
 private fun CourseGroupHeader(
     course: Course,
     memberCount: Int,
-    expanded: Boolean,
     allSelected: Boolean,
-    onToggleExpanded: () -> Unit,
-    onToggleSelectAll: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onClick: () -> Unit,
+    onToggleSelectAll: () -> Unit
 ) {
     val accentColor = Color(0xFF0EA5E9)
     Surface(
@@ -808,8 +778,8 @@ private fun CourseGroupHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onToggleExpanded)
-                .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                .clickable(onClick = onClick)
+                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -843,18 +813,6 @@ private fun CourseGroupHeader(
                     )
                 }
             }
-            IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Edit, contentDescription = "编辑课程", tint = accentColor, modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Delete, contentDescription = "删除课程", tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-            }
-            Icon(
-                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
-                tint = accentColor,
-                modifier = Modifier.size(22.dp)
-            )
         }
     }
 }
@@ -1476,24 +1434,61 @@ private fun AddUserDialog(
 private fun AddCourseDialog(
     visible: Boolean,
     courseName: String,
+    selectedMemberIds: Set<String>,
+    allSessions: List<UserSession>,
     onCourseNameChange: (String) -> Unit,
+    onMemberToggle: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     if (!visible) return
+    val memberListScroll = rememberScrollState()
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onConfirm) { Text("创建") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
         title = { Text("新建课程分组") },
         text = {
-            OutlinedTextField(
-                value = courseName,
-                onValueChange = onCourseNameChange,
-                label = { Text("课程名称") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = courseName,
+                    onValueChange = onCourseNameChange,
+                    label = { Text("课程名称") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                if (allSessions.isNotEmpty()) {
+                    Text(
+                        "选择成员",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(memberListScroll)
+                    ) {
+                        allSessions.forEach { session ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onMemberToggle(session.id, !selectedMemberIds.contains(session.id)) }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selectedMemberIds.contains(session.id),
+                                    onCheckedChange = { checked -> onMemberToggle(session.id, checked) }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(session.displayName, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
         }
     )
 }
@@ -1507,15 +1502,26 @@ private fun EditCourseDialog(
     onCourseNameChange: (String) -> Unit,
     onMemberToggle: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
+    onDelete: (Course) -> Unit,
     onSave: (Course) -> Unit
 ) {
     if (editingCourse == null) return
+    val memberListScroll = rememberScrollState()
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = { onSave(editingCourse) }) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = { onDelete(editingCourse) }
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = onDismiss) { Text("取消") }
+            }
+        },
         title = { Text("编辑课程") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1532,21 +1538,28 @@ private fun EditCourseDialog(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    allSessions.forEach { session ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onMemberToggle(session.id, !editCourseMemberIds.contains(session.id)) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = editCourseMemberIds.contains(session.id),
-                                onCheckedChange = { checked -> onMemberToggle(session.id, checked) }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(session.displayName, style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(memberListScroll)
+                    ) {
+                        allSessions.forEach { session ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onMemberToggle(session.id, !editCourseMemberIds.contains(session.id)) }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = editCourseMemberIds.contains(session.id),
+                                    onCheckedChange = { checked -> onMemberToggle(session.id, checked) }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(session.displayName, style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
