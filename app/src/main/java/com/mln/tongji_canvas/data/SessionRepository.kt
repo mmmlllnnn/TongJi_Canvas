@@ -181,10 +181,19 @@ class SessionRepository(private val context: Context) {
         return prefs.getString(ACTIVE_COURSE_KEY, null)
     }
 
+    fun saveAllUsersExpanded(expanded: Boolean) {
+        prefs.edit().putBoolean(ALL_USERS_EXPANDED_KEY, expanded).apply()
+    }
+
+    fun getAllUsersExpanded(): Boolean {
+        return prefs.getBoolean(ALL_USERS_EXPANDED_KEY, true)
+    }
+
     companion object {
         private const val KEY = "sessions_json"
         private const val SELECTED_USERS_KEY = "selected_user_ids"
         private const val COURSES_KEY = "courses_json"
         private const val ACTIVE_COURSE_KEY = "active_course_id"
+        private const val ALL_USERS_EXPANDED_KEY = "all_users_expanded"
     }
 }

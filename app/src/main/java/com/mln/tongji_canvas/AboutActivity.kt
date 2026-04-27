@@ -1,13 +1,11 @@
 package com.mln.tongji_canvas
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,18 +38,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import com.mln.tongji_canvas.BuildConfig
 import com.mln.tongji_canvas.ui.theme.Canvas_batch_signTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -71,6 +71,7 @@ class AboutActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
@@ -78,13 +79,15 @@ fun AboutScreen(
 ) {
     var dynamicContent by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val githubUrl = stringResource(R.string.about_github_url)
     
     // 获取动态内容
     LaunchedEffect(Unit) {
         try {
             dynamicContent = withContext(Dispatchers.IO) {
-                URL("https://raw.githubusercontent.com/mmmlllnnn/TongJi_Canvas/refs/heads/main/explanation.md").readText()
+                URL(context.getString(R.string.about_dynamic_content_url)).readText()
             }
         } catch (e: Exception) {
             println("无法获取动态内容: ${e.message}")
@@ -97,10 +100,13 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("关于应用") },
+                title = { Text(stringResource(R.string.about_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBackPressed) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.about_back)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -136,7 +142,7 @@ fun AboutScreen(
                     // APP图标
                     Image(
                         painter = painterResource(id = R.drawable.batchtj),
-                        contentDescription = "App Icon",
+                        contentDescription = stringResource(R.string.about_app_icon_desc),
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(12.dp)),
@@ -144,13 +150,13 @@ fun AboutScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "BatchTJ",
+                        text = stringResource(R.string.about_app_name),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "3.0.0(20251120)",
+                        text = "${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -160,27 +166,14 @@ fun AboutScreen(
             
             // 使用说明
             Text(
-                text = "About",
+                text = stringResource(R.string.about_section_about),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             
             Text(
-                text = """
-免责声明: 本应用仅供学习与研究使用，请勿用于任何违反学校规定及法律法规的行为。使用本应用产生的任何后果由使用者自行承担，开发者不承担任何责任。
-
-功能: 
-为同济大学Canvas系统课堂签到场景设计的Android批量签到应用。
-
-使用：
-1. 点击"添加用户"，登陆统一认证系统，自动/手动将认证信息保存到本地。
-2. 点击"扫描签到码"，扫描二维码会自动调用所保存的认证信息进行批量签到。
-3. 点击用户卡片上的编辑按钮可以修改用户认证信息。
-
-Tips:
-统一认证界面登陆成功后会自动导向不存在的网页,只保存Canvas系统的认证信息,不会保存其他系统的认证信息。
-                """.trimIndent(),
+                text = stringResource(R.string.about_description),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
@@ -189,7 +182,7 @@ Tips:
             
             // 开发者信息
             Text(
-                text = "Developer",
+                text = stringResource(R.string.about_section_developer),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -210,7 +203,7 @@ Tips:
                     // 开发者头像
                     Image(
                         painter = painterResource(id = R.drawable.developer),
-                        contentDescription = "Developer Avatar",
+                        contentDescription = stringResource(R.string.about_developer_avatar_desc),
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape),
@@ -219,17 +212,17 @@ Tips:
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "mmmlllnnn",
+                            text = stringResource(R.string.about_developer_name),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Github & Feedback",
+                            text = stringResource(R.string.about_github_label),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                             textDecoration = TextDecoration.Underline,
                             modifier = Modifier.clickable {
-                                uriHandler.openUri("https://github.com/mmmlllnnn")
+                                uriHandler.openUri(githubUrl)
                             }
                         )
                     }

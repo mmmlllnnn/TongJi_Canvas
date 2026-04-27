@@ -32,17 +32,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhoneIphone
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -128,6 +128,7 @@ fun MainScreen(
     // 课程相关状态
     var showAddCourseDialog by remember { mutableStateOf(false) }
     var addCourseName by remember { mutableStateOf("") }
+    var addCourseNameError by remember { mutableStateOf(false) }
     var addCourseMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingCourse by remember { mutableStateOf<Course?>(null) }
     var editCourseName by remember { mutableStateOf("") }
@@ -279,6 +280,7 @@ fun MainScreen(
 
     LaunchedEffect(Unit) {
         selectedUserIds = repository.getSelectedUserIds()
+        allUsersExpanded = repository.getAllUsersExpanded()
         refreshSessions()
     }
 
@@ -312,6 +314,10 @@ fun MainScreen(
         if (isInitialized) {
             repository.saveSelectedUserIds(selectedUserIds)
         }
+    }
+
+    LaunchedEffect(allUsersExpanded) {
+        repository.saveAllUsersExpanded(allUsersExpanded)
     }
 
     LaunchedEffect(courses) {
@@ -441,6 +447,7 @@ fun MainScreen(
                         },
                         onAddCourse = {
                             addCourseName = ""
+                            addCourseNameError = false
                             addCourseMemberIds = emptySet()
                             showAddCourseDialog = true
                         }
@@ -540,15 +547,20 @@ fun MainScreen(
     AddCourseDialog(
         visible = showAddCourseDialog,
         courseName = addCourseName,
+        isCourseNameError = addCourseNameError,
         selectedMemberIds = addCourseMemberIds,
         allSessions = sessions,
-        onCourseNameChange = { addCourseName = it },
+        onCourseNameChange = {
+            addCourseName = it
+            if (it.isNotBlank()) addCourseNameError = false
+        },
         onMemberToggle = { userId, checked ->
             addCourseMemberIds = if (checked) addCourseMemberIds + userId else addCourseMemberIds - userId
         },
         onDismiss = {
             showAddCourseDialog = false
             addCourseName = ""
+            addCourseNameError = false
             addCourseMemberIds = emptySet()
         },
         onConfirm = {
@@ -561,12 +573,11 @@ fun MainScreen(
                     refreshSessions()
                     showAddCourseDialog = false
                     addCourseName = ""
+                    addCourseNameError = false
                     addCourseMemberIds = emptySet()
                 }
             } else {
-                scope.launch {
-                    snackbarHostState.showSnackbar("请输入课程名称")
-                }
+                addCourseNameError = true
             }
         }
     )
@@ -867,18 +878,24 @@ private fun MainScreenTopBar(
         },
         actions = {
             TopBarActionButton(
-                icon = Icons.Outlined.ContentPaste,
+                icon = Icons.Rounded.ContentPaste,
                 contentDescription = "剪贴板导入",
+                iconVerticalOffset =  (-0.2).dp,// 导入按钮图标稍微往上移，视觉平衡
+                iconSize = (20.3).dp, // 导入按钮图标稍微小一点，视觉平衡
                 onClick = onImportClick
             )
             TopBarActionButton(
-                icon = Icons.Outlined.IosShare,
+                icon = Icons.Rounded.IosShare,
                 contentDescription = "导出账号",
+                iconVerticalOffset =  (-1.2).dp, // 导出按钮图标稍微往上移，视觉平衡
+                iconSize = (22.2).dp, // 导出按钮图标稍微大一点，视觉平衡
                 onClick = onExportClick
             )
             TopBarActionButton(
-                icon = Icons.Outlined.Info,
+                icon = Icons.Rounded.Info,
                 contentDescription = "关于",
+                iconVerticalOffset = 0.dp, 
+                iconSize = 22.dp, // 关于按钮稍微大一点，视觉平衡
                 onClick = onAboutClick
             )
         },
@@ -890,22 +907,29 @@ private fun MainScreenTopBar(
 private fun TopBarActionButton(
     icon: ImageVector,
     contentDescription: String,
+    iconVerticalOffset: androidx.compose.ui.unit.Dp = 0.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 21.dp,  // 新增图标大小参数
     onClick: () -> Unit
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier
-            .size(44.dp)
-            .padding(horizontal = 2.dp),
+        modifier = Modifier.size(44.dp),
         colors = IconButtonDefaults.iconButtonColors(
             contentColor = MaterialTheme.colorScheme.onSurface
         )
     ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(22.dp)
-        )
+        Box(
+            modifier = Modifier.size(23.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .size(iconSize)
+                    .offset(y = iconVerticalOffset)
+            )
+        }
     }
 }
 
@@ -1341,6 +1365,7 @@ private fun EditingDialogWithCourses(
     onSave: (UserSession) -> Unit
 ) {
     if (editingSession == null) return
+    val courseListScroll = rememberScrollState()
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -1370,21 +1395,28 @@ private fun EditingDialogWithCourses(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    courses.forEach { course ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onCourseToggle(course.id, !editUserCourseIds.contains(course.id)) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = editUserCourseIds.contains(course.id),
-                                onCheckedChange = { checked -> onCourseToggle(course.id, checked) }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(course.name, style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(courseListScroll)
+                    ) {
+                        courses.forEach { course ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onCourseToggle(course.id, !editUserCourseIds.contains(course.id)) }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = editUserCourseIds.contains(course.id),
+                                    onCheckedChange = { checked -> onCourseToggle(course.id, checked) }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(course.name, style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
@@ -1434,6 +1466,7 @@ private fun AddUserDialog(
 private fun AddCourseDialog(
     visible: Boolean,
     courseName: String,
+    isCourseNameError: Boolean,
     selectedMemberIds: Set<String>,
     allSessions: List<UserSession>,
     onCourseNameChange: (String) -> Unit,
@@ -1455,7 +1488,13 @@ private fun AddCourseDialog(
                     onValueChange = onCourseNameChange,
                     label = { Text("课程名称") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    isError = isCourseNameError,
+                    supportingText = {
+                        if (isCourseNameError) {
+                            Text("请输入课程名称")
+                        }
+                    }
                 )
                 if (allSessions.isNotEmpty()) {
                     Text(
