@@ -14,8 +14,8 @@ android {
         applicationId = "com.mln.tongji_canvas"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20260425
-        versionName = "3.2.0"
+        versionCode = 20260520
+        versionName = "3.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }
@@ -85,7 +85,6 @@ dependencies {
     
     // Permissions helper
     implementation(libs.accompanist.permissions)
-    implementation(libs.accompanist.systemuicontroller)
     
     // WebKit for WebView functionality
     implementation(libs.androidx.webkit)

@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -90,6 +91,7 @@ import com.mln.tongji_canvas.data.Course
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
+import com.mln.tongji_canvas.ui.theme.CanvasPalette
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -109,7 +111,8 @@ fun MainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val pageBackground = Color(0xFFF5F7FB)
+    val isDark = isSystemInDarkTheme()
+    val pageBackground = MaterialTheme.colorScheme.background
     val clipboardManager = LocalClipboardManager.current
 
     var sessions by remember { mutableStateOf<List<UserSession>>(emptyList()) }
@@ -373,8 +376,8 @@ fun MainScreen(
                     Brush.verticalGradient(
                         listOf(
                             pageBackground,
-                            Color(0xFFE9EDFF),
-                            Color(0xFFDDE4FF)
+                            if (isDark) CanvasPalette.GradientMidDark else CanvasPalette.GradientMid,
+                            if (isDark) CanvasPalette.GradientEndDark else CanvasPalette.GradientEnd
                         )
                     )
                 )
@@ -639,6 +642,7 @@ private fun GroupedSessionList(
     onEditCourse: (Course) -> Unit,
     onAddCourse: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
@@ -651,7 +655,7 @@ private fun GroupedSessionList(
                 icon = Icons.Outlined.People,
                 expanded = allUsersExpanded,
                 onToggleExpanded = onToggleAllUsersExpanded,
-                accentColor = Color(0xFF7C3AED)
+                accentColor = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent
             )
         }
 
@@ -692,8 +696,8 @@ private fun GroupedSessionList(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                color = Color(0xFFF0F0FF),
-                border = BorderStroke(1.dp, Color(0xFFE0E0F0))
+                color = if (isDark) CanvasPalette.AddCourseSurfaceDark else CanvasPalette.AddCourseSurface,
+                border = BorderStroke(1.dp, if (isDark) CanvasPalette.AddCourseBorderDark else CanvasPalette.AddCourseBorder)
             ) {
                 Row(
                     modifier = Modifier
@@ -706,14 +710,14 @@ private fun GroupedSessionList(
                     Icon(
                         Icons.Outlined.Add,
                         contentDescription = null,
-                        tint = Color(0xFF7C3AED),
+                        tint = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         "新建课程分组",
                         style = MaterialTheme.typography.titleSmall,
-                        color = Color(0xFF7C3AED)
+                        color = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent
                     )
                 }
             }
@@ -780,7 +784,8 @@ private fun CourseGroupHeader(
     onClick: () -> Unit,
     onToggleSelectAll: () -> Unit
 ) {
-    val accentColor = Color(0xFF0EA5E9)
+    val isDark = isSystemInDarkTheme()
+    val accentColor = if (isDark) CanvasPalette.CyanAccentDark else CanvasPalette.CyanAccent
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -841,6 +846,7 @@ private fun MainScreenTopBar(
     onExportClick: () -> Unit,
     onAboutClick: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     androidx.compose.material3.LargeTopAppBar(
         title = {
             Column {
@@ -862,14 +868,14 @@ private fun MainScreenTopBar(
                     if (selectedCount > 0) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color(0xFFE7E0FF),
+                            color = if (isDark) CanvasPalette.PurpleAccentContainerDark else CanvasPalette.PurpleAccentContainer,
                             tonalElevation = 0.dp
                         ) {
                             Text(
                                 "已选 $selectedCount 个",
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFF5C33CF)
+                                color = if (isDark) CanvasPalette.PurpleAccentMutedDark else CanvasPalette.PurpleAccentMuted
                             )
                         }
                     }
@@ -942,6 +948,7 @@ private fun AddUserMenu(
     onOAuthAdd: () -> Unit,
     onManualAdd: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
@@ -952,7 +959,7 @@ private fun AddUserMenu(
     ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
             shadowElevation = 12.dp,
             modifier = Modifier.padding(4.dp)
@@ -967,7 +974,7 @@ private fun AddUserMenu(
                     icon = Icons.Outlined.PhoneIphone,
                     title = "在线登录添加",
                     description = "自动捕获认证信息",
-                    accent = Color(0xFF7C3AED),
+                    accent = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent,
                     onClick = {
                         onOAuthAdd()
                         onDismiss()
@@ -977,7 +984,7 @@ private fun AddUserMenu(
                     icon = Icons.Outlined.Computer,
                     title = "手动录入 Cookies",
                     description = "适合已有认证信息的账号",
-                    accent = Color(0xFF0EA5E9),
+                    accent = if (isDark) CanvasPalette.CyanAccentDark else CanvasPalette.CyanAccent,
                     onClick = {
                         onManualAdd()
                         onDismiss()
@@ -1039,17 +1046,18 @@ private fun SwipeableSessionCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     val density = LocalDensity.current
     val swipeWidth = 96.dp
     val swipeWidthPx = with(density) { swipeWidth.toPx() }
     var offsetPx by remember { mutableFloatStateOf(0f) }
     val statusInfo = SessionStatusInfo(session)
     val borderStroke = if (selected) {
-        BorderStroke(2.dp, Color(0xFFB8A2FF))
+        BorderStroke(2.dp, if (isDark) CanvasPalette.PurpleBorderSelectedDark else CanvasPalette.PurpleBorderSelected)
     } else {
-        BorderStroke(1.dp, Color(0xFFE6E8F2))
+        BorderStroke(1.dp, if (isDark) CanvasPalette.CardBorderDefaultDark else CanvasPalette.CardBorderDefault)
     }
-    val surfaceColor = Color.White
+    val surfaceColor = MaterialTheme.colorScheme.surface
 
     Box(
         modifier = Modifier
@@ -1154,9 +1162,11 @@ private fun SwipeableSessionCard(
 
 @Composable
 private fun SessionAvatar(name: String) {
+    val isDark = isSystemInDarkTheme()
     val initials = remember(name) { initialFor(name) }
-    val style = remember(name) {
-        avatarStyles[(name.hashCode().absoluteValue) % avatarStyles.size]
+    val style = remember(name, isDark) {
+        val styles = if (isDark) avatarStylesDark else avatarStyles
+        styles[(name.hashCode().absoluteValue) % styles.size]
     }
     Box(
         modifier = Modifier
@@ -1194,11 +1204,12 @@ private fun SessionStatusLabel(statusInfo: SessionStatusUi) {
 
 @Composable
 private fun SessionStatusInfo(session: UserSession): SessionStatusUi {
+    val isDark = isSystemInDarkTheme()
     return if (session.accessToken.isNullOrEmpty()) {
         SessionStatusUi(
             text = "等待手动验证",
-            color = Color(0xFFF97316),
-            dotColor = Color(0xFFF97316)
+            color = if (isDark) CanvasPalette.WarningOrangeDark else CanvasPalette.WarningOrange,
+            dotColor = if (isDark) CanvasPalette.WarningOrangeDark else CanvasPalette.WarningOrange
         )
     } else {
         SessionStatusUi(
@@ -1232,6 +1243,15 @@ private val avatarStyles = listOf(
     AvatarStyle(Color(0xFFF7E5FF), Color(0xFF8A32B8))
 )
 
+private val avatarStylesDark = listOf(
+    AvatarStyle(Color(0xFF2D2155), Color(0xFFB49AFF)),
+    AvatarStyle(Color(0xFF4A1535), Color(0xFFFF8EC7)),
+    AvatarStyle(Color(0xFF4A2210), Color(0xFFFFA07A)),
+    AvatarStyle(Color(0xFF0D3330), Color(0xFF5CE0D0)),
+    AvatarStyle(Color(0xFF0D2240), Color(0xFF6DA9FF)),
+    AvatarStyle(Color(0xFF351545), Color(0xFFCC88EE))
+)
+
 // ==================== 底部栏 ====================
 
 @Composable
@@ -1240,6 +1260,7 @@ private fun FloatingDock(
     onAdd: () -> Unit,
     onScan: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     val scanEnabled = selectedCount > 0
     Box(
         modifier = Modifier
@@ -1249,7 +1270,7 @@ private fun FloatingDock(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(40.dp),
-            color = Color(0xFFF9FAFF),
+            color = if (isDark) CanvasPalette.DockSurfaceDark else CanvasPalette.DockSurface,
             tonalElevation = 8.dp,
             shadowElevation = 12.dp
         ) {
@@ -1284,10 +1305,11 @@ private fun DockButton(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        color = Color(0xFFF1F5F9),
+        color = if (isDark) CanvasPalette.DockButtonSurfaceDark else CanvasPalette.DockButtonSurface,
         tonalElevation = 0.dp
     ) {
         Row(
@@ -1298,11 +1320,11 @@ private fun DockButton(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = Color(0xFF475569))
+            Icon(icon, contentDescription = null, tint = if (isDark) CanvasPalette.DockButtonTextDark else CanvasPalette.DockButtonText)
             Spacer(Modifier.width(8.dp))
             Text(
                 label,
-                color = Color(0xFF475569),
+                color = if (isDark) CanvasPalette.DockButtonTextDark else CanvasPalette.DockButtonText,
                 style = MaterialTheme.typography.titleSmall
             )
         }
@@ -1316,12 +1338,17 @@ private fun GradientDockButton(
     label: String,
     onClick: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     val gradientColors = if (enabled) {
-        listOf(Color(0xFF7C3AED), Color(0xFF9333EA))
+        if (isDark) listOf(CanvasPalette.PurpleGradientStartDark, CanvasPalette.PurpleGradientEndDark)
+        else listOf(CanvasPalette.PurpleGradientStart, CanvasPalette.PurpleGradientEnd)
     } else {
-        listOf(Color(0xFFD7DDED), Color(0xFFD7DDED))
+        if (isDark) listOf(CanvasPalette.GradientDisabledDark, CanvasPalette.GradientDisabledDark)
+        else listOf(CanvasPalette.GradientDisabled, CanvasPalette.GradientDisabled)
     }
-    val contentColor = if (enabled) Color.White else Color(0xFF94A3B8)
+    val contentColor = if (enabled) Color.White else {
+        if (isDark) CanvasPalette.GradientDisabledTextDark else CanvasPalette.GradientDisabledText
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(32.dp))

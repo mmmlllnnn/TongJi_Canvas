@@ -1,50 +1,13 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# Keep rules for this project.
 #
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Important:
+# Avoid broad package-level -keep rules here. AndroidX/Compose/ML Kit libraries
+# already ship consumer rules, and broad keep rules can block R8 shrinking,
+# causing very large APKs.
+#
+# Add highly-targeted keep rules only when you hit runtime reflection issues.
 
-# Keep ML Kit classes
--keep class com.google.mlkit.** { *; }
--keep class com.google.android.gms.** { *; }
-
-# Keep CameraX classes
--keep class androidx.camera.** { *; }
-
-# Keep Compose classes
--keep class androidx.compose.** { *; }
-
-# Keep WebView classes
--keep class androidx.webkit.** { *; }
-
-# Keep OkHttp classes
--keep class okhttp3.** { *; }
--keep class okio.** { *; }
-
-# Keep Navigation classes
--keep class androidx.navigation.** { *; }
-
-# Keep Lifecycle classes
--keep class androidx.lifecycle.** { *; }
-
-# Keep Activity classes
--keep class androidx.activity.** { *; }
-
-# Keep Core classes
--keep class androidx.core.** { *; }
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
+# If WebView JavaScript interfaces are used, keep only exposed JS methods.
+#-keepclassmembers class com.mln.tongji_canvas.** {
+#    @android.webkit.JavascriptInterface <methods>;
 #}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
