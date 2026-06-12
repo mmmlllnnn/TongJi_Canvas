@@ -2,7 +2,7 @@
 
 一个专为同济大学Canvas系统课堂签到场景设计的Android批量签到应用。
 
-如果帮到你，请给我点个star,这对我蛮重要，谢谢~
+如果帮到你，请给我点个star，这对我蛮重要，谢谢~
 
 ## ✨ 项目简介
 
@@ -20,6 +20,8 @@
 > 右上方支持从剪贴板导入导出用户信息。
 
 ## 🆕 最新特性
+v3.2.1
+- 深色模式
 
 v3.2.0
 - 支持新建课程分组
@@ -44,7 +46,7 @@ v3.0.0
 左滑信息卡片🈶删除按钮
 
 ---
-旧版：
+<!-- 旧版：
 <table>
   <tr>
     <td><img src="./pic/1.jpg" width="200"></td>
@@ -56,28 +58,48 @@ v3.0.0
     <td><img src="./pic/5.jpg" width="200"></td>
     <td><img src="./pic/6.jpg" width="200"></td>
   </tr>
-</table>
+</table> -->
 
 
 
 ## 新增web版：[点击跳转仓库](https://github.com/mmmlllnnn/TongJi_Canvas_Web)
 
-web版又称呆瓜版， 无需安装APP ，
+我去，本来只是个 demo，结果用的人数有点超乎想象啊，2个月调用了1375次。
 
-只需要对方在浏览器打开链接,对准二维码完成签到。
+但是为什么只有4个 star [生气] 🤡 老白嫖怪们~
 
-需要事先构建自己的专属url链接: 在?后替换为你的认证信息。
+不管了，开始正式维护 web 版
+
+[点此查看使用说明](https://handsome.eu.org/canvas/guide.html)
+
+[在线版访问：https://handsome.eu.org/canvas/index.html](https://handsome.eu.org/canvas/index.html)
+
+![](./pic/web1.png)
 
 ```
-https://你的域名/index.html?_canvas_middle_session=xxxxxxx
+URL中传入你的认证信息后，打开只会显示简洁版：
+
+https://handsome.eu.org/canvas/index.html?_canvas_middle_session=替换为你的cookie
 
 ```
-
-![](./pic/7.jpg)
-
+![](./pic/web2.png)
 
 
-在线版访问（自己搭的 不排除某天关停）：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)
+<br>
+
+
+[旧]
+
+~~web版又称呆瓜版， 无需安装APP ，~~
+~~只需要对方在浏览器打开链接,对准二维码完成签到。~~
+
+~~需要事先构建自己的专属url链接: 在?后替换为你的认证信息。~~
+
+
+~~https://你的域名/index.html?_canvas_middle_session=xxxxxxx~~
+
+
+~~在线版访问（自己搭的 不排除某天关停）：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)~~
 
 
 
