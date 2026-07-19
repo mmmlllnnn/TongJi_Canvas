@@ -1,8 +1,19 @@
 # 同济大学Canvas系统课堂签到助手
 
-一个专为同济大学Canvas系统课堂签到场景设计的Android批量签到应用。
 
+
+<div align="center">
+<img src="./pic/logo.jpg" alt="logo" style="width: 30%; max-width: 150px; border-radius: 20px;">
+
+<br>
+
+一个专为同济大学 Canvas 系统课堂签到场景设计的 Android 批量签到应用。
+<p>
 如果帮到你，请给我点个star，这对我蛮重要，谢谢~
+</p>
+</div>
+
+
 
 ## ✨ 项目简介
 
