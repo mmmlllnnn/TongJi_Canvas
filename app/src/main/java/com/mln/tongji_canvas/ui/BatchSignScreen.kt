@@ -53,6 +53,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mln.tongji_canvas.data.AccountOutcome
+import com.mln.tongji_canvas.data.AppDiagnostics
+import com.mln.tongji_canvas.data.DiagLevel
+import com.mln.tongji_canvas.data.HistoryFormat
+import com.mln.tongji_canvas.data.HistoryStore
+import com.mln.tongji_canvas.data.SecretRedactor
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.SignEvent
 import com.mln.tongji_canvas.data.SignInEngine
@@ -61,13 +67,18 @@ import com.mln.tongji_canvas.data.SignStatus
 import com.mln.tongji_canvas.data.SignTarget
 import com.mln.tongji_canvas.data.SignTargetParse
 import com.mln.tongji_canvas.data.UserSession
+import com.mln.tongji_canvas.data.signDiagTag
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
 import com.mln.tongji_canvas.ui.components.LoadingShimmerLines
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.Locale
 
 /**
@@ -111,6 +122,78 @@ fun BatchSignScreen(
     val invalidReason = (targetParse as? SignTargetParse.Invalid)?.reason
 
     /**
+     * 把一次批次的结果写进「签到历史 + 诊断日志」。
+     *
+     * 分工（不要混）：
+     * - 历史（[HistoryStore.appendSignSession]）只留人话：时间 / 课程 / 每个人的结论与原因；
+     * - 诊断（[HistoryStore.log]）留排障信息：HTTP 状态码、命中的规则（evidence）、是否兜底推断、
+     *   尝试次数、耗时、**已脱敏**的请求 URL。
+     *
+     * 在 IO 线程执行；原子里先读快照（Compose 状态不能跨线程乱读），再交给 store。
+     * 用 [NonCancellable] 是因为本函数会在「取消」路径上被调用——不加的话写盘会被立即取消。
+     */
+    suspend fun recordRun(
+        runId: String,
+        startedAtMs: Long,
+        finishedAtMs: Long,
+        signTarget: SignTarget,
+        batch: List<UserSession>,
+        cancelled: Boolean
+    ) {
+        val store = AppDiagnostics.current ?: return
+        // 1) 先在当前线程把结果读成不可变快照
+        val outcomes = batch.map { session ->
+            results[session.id]?.let { AccountOutcome.from(it) }
+                ?: AccountOutcome(
+                    sessionId = session.id,
+                    displayName = session.displayName,
+                    status = SignStatus.TIMEOUT,
+                    reason = if (cancelled) "已取消（请求未完成）" else "未执行（批次被新的重试接管）",
+                    attempts = 0,
+                    evidence = if (cancelled) AccountOutcome.CANCELLED_EVIDENCE else "未执行"
+                )
+        }
+        val courseName = batch.firstNotNullOfOrNull { session ->
+            results[session.id]?.courseName?.takeIf { it.isNotBlank() }
+        }
+        val signedCount = outcomes.count { it.isSuccessLike }
+
+        // 2) 再切到 IO 线程落盘（历史 + 诊断）
+        withContext(NonCancellable + Dispatchers.IO) {
+            store.appendSignSession(
+                runId = runId,
+                startedAtMs = startedAtMs,
+                finishedAtMs = finishedAtMs,
+                courseName = courseName,
+                courseCode = signTarget.courseCode,
+                targetHost = signTarget.host(),
+                accounts = outcomes
+            )
+            store.log(
+                level = if (cancelled) DiagLevel.WARN else DiagLevel.INFO,
+                tag = signDiagTag(runId),
+                message = if (cancelled) {
+                    "批次被取消：成功 $signedCount / ${outcomes.size}"
+                } else {
+                    "批次结束：成功 $signedCount / ${outcomes.size}"
+                },
+                detail = "GET ${SecretRedactor.redact(signTarget.url)} · " +
+                    "并发上限 ${SignInEngine.DEFAULT_MAX_CONCURRENCY} · " +
+                    "重试上限 ${SignInEngine.DEFAULT_MAX_RETRIES} · " +
+                    "批次耗时 ${HistoryFormat.duration(finishedAtMs - startedAtMs)}"
+            )
+            outcomes.forEach { outcome ->
+                store.log(
+                    level = if (outcome.isSuccessLike) DiagLevel.INFO else DiagLevel.WARN,
+                    tag = signDiagTag(runId),
+                    message = "${outcome.displayName} → ${outcome.statusLabel}",
+                    detail = outcome.diagnosticDetail()
+                )
+            }
+        }
+    }
+
+    /**
      * 发起一批签到。
      *
      * 关键语义：**只清除 [targets] 里这些账号的结果**，其余账号的结论原样保留。
@@ -127,7 +210,12 @@ fun BatchSignScreen(
         targets.forEach { results.remove(it.id) }
         running.value = true
 
+        // 本批次的标识：历史记录与诊断日志靠它对齐（诊断 tag = "sign:<runId>"）
+        val runId = HistoryStore.newRunId()
+        val startedAtMs = System.currentTimeMillis()
+
         job.value = scope.launch {
+            var wasCancelled = false
             try {
                 engine.signAll(targets, signTarget).collect { event ->
                     when (event) {
@@ -136,6 +224,7 @@ fun BatchSignScreen(
                     }
                 }
             } catch (cancelled: CancellationException) {
+                wasCancelled = true
                 // 手动取消（且没有新批次接管）：把在途账号标记为可重试的终态，
                 // 避免卡片永远停在「签到中」
                 if (generation.value == myGeneration) {
@@ -147,15 +236,25 @@ fun BatchSignScreen(
                                 status = SignStatus.TIMEOUT,
                                 reason = "已取消（请求未完成）",
                                 attempts = 0,
-                                evidence = "用户取消"
+                                evidence = AccountOutcome.CANCELLED_EVIDENCE
                             )
                         }
                     }
                 }
                 throw cancelled
             } finally {
+                // 只有「仍是最新批次」才落历史：被新的重试批次接管时，
+                // 这一批的结论已经被覆盖，再记一条只会让用户看到两份互相矛盾的记录
                 if (generation.value == myGeneration) {
                     running.value = false
+                    recordRun(
+                        runId = runId,
+                        startedAtMs = startedAtMs,
+                        finishedAtMs = System.currentTimeMillis(),
+                        signTarget = signTarget,
+                        batch = targets,
+                        cancelled = wasCancelled
+                    )
                 }
             }
         }
@@ -550,6 +649,25 @@ private fun ResultSectionHeader(title: String, count: Int, icon: ImageVector, co
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = color)
     }
+}
+
+// ==================== 历史 / 诊断（纯函数，只给 [recordRun] 用） ====================
+
+/** 请求主机（历史里只留主机，查询参数一律不进历史） */
+private fun SignTarget.host(): String = url.toHttpUrlOrNull()?.host ?: SignTarget.CANVAS_HOST
+
+/**
+ * 单账号的诊断明细。写进 diag.log 前还会由 [HistoryStore.log] 统一脱敏，
+ * 因此这里可以放心带上原始正文片段（引擎侧已截断到 ~200 字）。
+ */
+private fun AccountOutcome.diagnosticDetail(): String = buildString {
+    append("HTTP ").append(httpStatus?.toString() ?: "-")
+    evidence?.takeIf { it.isNotBlank() }?.let { append(" · evidence=").append(it) }
+    append(" · attempts=").append(attempts)
+    append(" · elapsed=").append(elapsedMs).append("ms")
+    if (inferred) append(" · inferred=true（兜底推断，仅供校准）")
+    reason?.takeIf { it.isNotBlank() }?.let { append(" · reason=").append(it) }
+    rawSnippet?.takeIf { it.isNotBlank() }?.let { append(" · 原始正文=").append(it) }
 }
 
 

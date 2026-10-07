@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhoneIphone
@@ -93,11 +94,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.mln.tongji_canvas.data.Course
 import com.mln.tongji_canvas.data.CredentialProbe
+import com.mln.tongji_canvas.data.DiagLevel
 import com.mln.tongji_canvas.data.OAuth2Tokens
 import com.mln.tongji_canvas.data.ProbeResult
 import com.mln.tongji_canvas.data.SessionIdentityLogic
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
+import com.mln.tongji_canvas.data.describe
+import com.mln.tongji_canvas.data.logCredentialImport
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
 import com.mln.tongji_canvas.ui.components.LoadingShimmerLines
 import com.mln.tongji_canvas.ui.theme.CanvasPalette
@@ -113,6 +117,7 @@ fun MainScreen(
     repository: SessionRepository,
     onAddUser: () -> Unit,
     onScanQr: (List<String>) -> Unit,
+    onOpenHistory: () -> Unit,
     onTestSession: (UserSession) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -188,6 +193,14 @@ fun MainScreen(
                 ),
                 studentId = studentId,
                 verifiedAt = verifiedAt
+            )
+            // 导入事件写进诊断日志：结果 + 姓名 + 学号 + 不可逆的凭据指纹（绝无 Cookie 本体）
+            logCredentialImport(
+                source = "手动录入",
+                cookieHeader = cookieHeader,
+                outcome = if (verifiedAt != null) "已保存（已验证）" else "已保存（未验证）",
+                studentId = studentId,
+                level = if (verifiedAt != null) DiagLevel.INFO else DiagLevel.WARN
             )
             refreshSessions()
             closeAddDialog()
@@ -396,6 +409,7 @@ fun MainScreen(
                 scrollBehavior = scrollBehavior,
                 onImportClick = { importSessionsFromClipboard() },
                 onExportClick = { exportSessionsToClipboard() },
+                onHistoryClick = onOpenHistory,
                 onAboutClick = {
                     val intent = Intent(context, com.mln.tongji_canvas.AboutActivity::class.java)
                     context.startActivity(intent)
@@ -643,6 +657,12 @@ fun MainScreen(
                                 )
                             } else {
                                 // 验证未通过：不静默丢弃，交给用户决定是否仍要保存
+                                logCredentialImport(
+                                    source = "手动录入",
+                                    cookieHeader = cookie,
+                                    outcome = "未通过验证（${result.describe()}）",
+                                    level = DiagLevel.WARN
+                                )
                                 manualVerifyFailure = ManualVerifyFailure(name, cookie, result)
                             }
                         } finally {
@@ -1010,6 +1030,7 @@ private fun MainScreenTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
     onImportClick: () -> Unit,
     onExportClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onAboutClick: () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
@@ -1062,6 +1083,13 @@ private fun MainScreenTopBar(
                 iconVerticalOffset =  (-1.2).dp, // 导出按钮图标稍微往上移，视觉平衡
                 iconSize = (22.2).dp, // 导出按钮图标稍微大一点，视觉平衡
                 onClick = onExportClick
+            )
+            TopBarActionButton(
+                icon = Icons.Outlined.History,
+                contentDescription = "签到历史",
+                iconVerticalOffset = 0.dp,
+                iconSize = 21.dp, // 与「关于」保持一致的视觉重量
+                onClick = onHistoryClick
             )
             TopBarActionButton(
                 icon = Icons.Rounded.Info,

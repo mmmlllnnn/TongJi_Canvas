@@ -8,11 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.mln.tongji_canvas.data.AppDiagnostics
+import com.mln.tongji_canvas.data.HistoryStore
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.ui.OAuth2LoginScreen
 import com.mln.tongji_canvas.ui.MainScreen
 import com.mln.tongji_canvas.ui.EnhancedScannerScreen
 import com.mln.tongji_canvas.ui.BatchSignScreen
+import com.mln.tongji_canvas.ui.HistoryScreen
 import com.mln.tongji_canvas.ui.theme.Canvas_batch_signTheme
 
 class MainActivity : ComponentActivity() {
@@ -22,6 +25,10 @@ class MainActivity : ComponentActivity() {
         // 影响正常使用与问题反馈。改为信任持有设备的用户。
         enableEdgeToEdge()
         val repository = SessionRepository(this)
+        // 签到历史 + 诊断日志的落盘仓库（filesDir 下的 history.json / diag.log）。
+        // install 一次之后，探测/导入等没有 Context 的模块也能写诊断（AppDiagnostics.log）。
+        val historyStore = HistoryStore.forContext(this)
+        AppDiagnostics.install(historyStore)
         setContent {
             Canvas_batch_signTheme {
                 val nav = rememberNavController()
@@ -35,6 +42,7 @@ class MainActivity : ComponentActivity() {
                                 val userIdsParam = selectedUserIds.joinToString(",")
                                 nav.navigate("scanner?selectedUsers=" + java.net.URLEncoder.encode(userIdsParam, "UTF-8"))
                             },
+                            onOpenHistory = { nav.navigate("history") },
                             onTestSession = { /* TODO: open test page with cookies */ }
                         )
                     }
@@ -61,6 +69,10 @@ class MainActivity : ComponentActivity() {
                             emptySet<String>()
                         }
                         BatchSignScreen(repository = repository, targetUrl = url, selectedUserIds = selectedUserIds)
+                    }
+                    // 签到历史 / 诊断日志页（首页右上角的「历史」按钮进入）
+                    composable("history") {
+                        HistoryScreen(store = historyStore, onBack = { nav.popBackStack() })
                     }
                 }
             }

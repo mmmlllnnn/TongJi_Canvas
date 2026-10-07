@@ -44,7 +44,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.mln.tongji_canvas.data.AppDiagnostics
 import com.mln.tongji_canvas.data.CredentialImportFlow
+import com.mln.tongji_canvas.data.DiagLevel
+import com.mln.tongji_canvas.data.IMPORT_DIAG_TAG
 import com.mln.tongji_canvas.data.ImportDecisionReason
 import com.mln.tongji_canvas.data.ImportStage
 import com.mln.tongji_canvas.data.ImportUiState
@@ -294,11 +297,20 @@ fun OAuth2LoginScreen(
     fun handleLoginDetected() {
         if (isLoginDetected.value) return
         isLoginDetected.value = true
+        // 只记「发生了什么」；Cookie 本体由 CredentialImportFlow 读取，
+        // 诊断日志里永远只有不可逆的凭据指纹（见 logCredentialImport）
+        AppDiagnostics.log(
+            DiagLevel.INFO,
+            IMPORT_DIAG_TAG,
+            "登录页检测到登录成功，开始导入凭据",
+            "UA 模式=${if (isMobileUA.value) "手机" else "电脑"}"
+        )
         CredentialImportFlow.begin(repository)
     }
 
     /** 用户选择「重新登录」：丢弃本次凭据并重新加载登录页。 */
     fun restartLogin() {
+        AppDiagnostics.log(DiagLevel.INFO, IMPORT_DIAG_TAG, "用户选择重新登录，已丢弃本次凭据")
         CredentialImportFlow.discard()
         isLoginDetected.value = false
         initializeWebView()
@@ -307,6 +319,12 @@ fun OAuth2LoginScreen(
     fun applyUserAgentMode(targetMobile: Boolean) {
         if (isMobileUA.value == targetMobile) return
         isMobileUA.value = targetMobile
+        AppDiagnostics.log(
+            DiagLevel.INFO,
+            IMPORT_DIAG_TAG,
+            "切换浏览器模式并重新登录",
+            "UA 模式=${if (targetMobile) "手机" else "电脑"}"
+        )
         webViewRef.value?.let { webView ->
             webView.clearCache(true)
             val cookieManager = android.webkit.CookieManager.getInstance()

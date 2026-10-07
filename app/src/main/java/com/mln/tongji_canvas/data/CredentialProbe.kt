@@ -57,6 +57,9 @@ object CredentialProbe {
     /** 整体探测预算：用户最多等待约 8 秒。 */
     const val DEFAULT_TIMEOUT_MS = 8_000L
 
+    /** 诊断日志里本模块的 tag */
+    private const val DIAG_TAG = "probe"
+
     private const val CANVAS_ORIGIN = "https://canvas.tongji.edu.cn"
     private const val PROBE_PATH = "/lms/mobile/forscan"
     private const val FAKE_ROLL_CALL_TOKEN = "0000000000"
@@ -120,11 +123,24 @@ object CredentialProbe {
     /**
      * 探测凭据。[cookieHeader] 为完整 Cookie 头（至少包含 `_canvas_middle_session`）。
      * [timeoutMs] 是整体预算：先试 117029，未得出结论且仍有剩余预算时再试 102714。
+     *
+     * 全程写诊断日志（[AppDiagnostics]）：只记录 courseCode、HTTP 状态码、结论、耗时与
+     * **不可逆的凭据指纹**——绝不记录 Cookie 本体（详见 [CredentialFingerprint]）。
      */
     suspend fun probe(cookieHeader: String?, timeoutMs: Long = DEFAULT_TIMEOUT_MS): ProbeResult =
         withContext(Dispatchers.IO) {
             val cookie = normalizeCookieHeader(cookieHeader)
-            if (cookie.isEmpty()) return@withContext ProbeResult.Unknown
+            if (cookie.isEmpty()) {
+                AppDiagnostics.log(DiagLevel.WARN, DIAG_TAG, "凭据探测跳过：Cookie 为空")
+                return@withContext ProbeResult.Unknown
+            }
+            val fingerprint = credentialFingerprintOf(cookie)
+            AppDiagnostics.log(
+                DiagLevel.INFO,
+                DIAG_TAG,
+                "开始探测凭据",
+                "凭据 $fingerprint · 预算 ${timeoutMs}ms"
+            )
 
             val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(1_000L)
             // 一个都没来得及尝试 → 超时；否则保留最后一次的确切结论
@@ -132,7 +148,15 @@ object CredentialProbe {
             for (courseCode in PROBE_COURSE_CODES) {
                 val remaining = deadline - System.currentTimeMillis()
                 if (remaining < 500L) break
-                when (val result = attempt(cookie, courseCode, remaining)) {
+                val outcome = attempt(cookie, courseCode, remaining)
+                AppDiagnostics.log(
+                    level = if (outcome.result is ProbeResult.Valid) DiagLevel.INFO else DiagLevel.WARN,
+                    tag = DIAG_TAG,
+                    message = "探测 courseCode=$courseCode → ${outcome.result.describe()}",
+                    detail = "HTTP ${outcome.httpStatus ?: "-"} · 耗时 ${outcome.elapsedMs}ms · " +
+                        "${outcome.note} · 凭据 $fingerprint"
+                )
+                when (val result = outcome.result) {
                     is ProbeResult.Valid -> return@withContext result
                     ProbeResult.Expired -> return@withContext ProbeResult.Expired
                     ProbeResult.Timeout -> {
@@ -146,10 +170,32 @@ object CredentialProbe {
                     ProbeResult.Unknown -> last = ProbeResult.Unknown
                 }
             }
+            AppDiagnostics.log(
+                if (last is ProbeResult.Unknown) DiagLevel.WARN else DiagLevel.ERROR,
+                DIAG_TAG,
+                "探测结束：${last.describe()}",
+                "凭据 $fingerprint"
+            )
             last
         }
 
-    private fun attempt(cookie: String, courseCode: String, timeoutMs: Long): ProbeResult {
+    /** 一次探测尝试的结果 + 排障所需的元信息（HTTP 状态码、耗时、判据说明） */
+    private data class Attempt(
+        val result: ProbeResult,
+        val httpStatus: Int?,
+        val elapsedMs: Long,
+        val note: String
+    )
+
+    private fun attempt(cookie: String, courseCode: String, timeoutMs: Long): Attempt {
+        val startedNs = System.nanoTime()
+        fun done(result: ProbeResult, httpStatus: Int?, note: String) = Attempt(
+            result = result,
+            httpStatus = httpStatus,
+            elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L,
+            note = note
+        )
+
         val request = Request.Builder()
             .url("$CANVAS_ORIGIN$PROBE_PATH?courseCode=$courseCode&rollCallToken=$FAKE_ROLL_CALL_TOKEN")
             .get()
@@ -167,11 +213,11 @@ object CredentialProbe {
         val response = try {
             client.newCall(request).execute()
         } catch (e: SocketTimeoutException) {
-            return ProbeResult.Timeout
+            return done(ProbeResult.Timeout, null, "SocketTimeoutException")
         } catch (e: InterruptedIOException) {
-            return ProbeResult.Timeout
+            return done(ProbeResult.Timeout, null, "InterruptedIOException")
         } catch (e: IOException) {
-            return ProbeResult.NetworkError
+            return done(ProbeResult.NetworkError, null, "${e.javaClass.simpleName}：${e.message ?: "网络异常"}")
         }
 
         return response.use { resp ->
@@ -182,22 +228,64 @@ object CredentialProbe {
                 // （/lms/mobile/forscan 的中间件在限流/压力下会先跳登录页），
                 // 因此 302 只说明「中间件要求走 OAuth」，不能证明凭据无效。
                 // 真正的失效结论改由实际签到请求给出（那时 302 才是权威信号）。
-                isRedirect -> ProbeResult.Unknown
+                isRedirect -> done(ProbeResult.Unknown, resp.code, "3xx 重定向视为无法判定（不能证明凭据失效）")
                 // 401/403 是服务端明确的鉴权拒绝，语义比 302 强得多
-                resp.code == 401 || resp.code == 403 -> ProbeResult.Expired
-                !resp.isSuccessful -> ProbeResult.Unknown
+                resp.code == 401 || resp.code == 403 -> done(ProbeResult.Expired, resp.code, "服务端明确拒绝鉴权")
+                !resp.isSuccessful -> done(ProbeResult.Unknown, resp.code, "非预期状态码")
                 else -> {
                     val body = try {
                         resp.body?.string().orEmpty()
                     } catch (e: IOException) {
-                        return@use ProbeResult.NetworkError
+                        return@use done(ProbeResult.NetworkError, resp.code, "读取正文失败：${e.javaClass.simpleName}")
                     }
-                    parseIdentity(body)?.let { ProbeResult.Valid(it.realName, it.studentId) }
-                        ?: ProbeResult.Unknown
+                    parseIdentity(body)
+                        ?.let { done(ProbeResult.Valid(it.realName, it.studentId), resp.code, "解析到身份信息") }
+                        ?: done(ProbeResult.Unknown, resp.code, "200 但未解析到身份信息")
                 }
             }
         }
     }
+}
+
+/** [ProbeResult] 的中文短语（诊断日志用；UI 文案在界面层各自维护） */
+internal fun ProbeResult.describe(): String = when (this) {
+    is ProbeResult.Valid -> "凭据有效（${realName.ifBlank { "?" }}/${studentId.ifBlank { "?" }}）"
+    ProbeResult.Expired -> "凭据失效（401/403）"
+    ProbeResult.Timeout -> "探测超时"
+    ProbeResult.NetworkError -> "网络异常"
+    ProbeResult.Unknown -> "无法判定"
+}
+
+/**
+ * 记录一次凭据导入事件（登录页导入与手动录入共用）。
+ *
+ * 写入诊断日志的内容：结果、真实姓名、学号、**脱敏的凭据指纹**。
+ * 不写入：Cookie 本体、`_canvas_middle_session` 的值、任何鉴权头。
+ * （即使这里不小心拼进了凭据，[HistoryStore.log] 落盘前还会再脱敏一次。）
+ *
+ * @param source 来源说明，例如「统一认证登录页」「手动录入」
+ * @param outcome 结果短语，例如「已保存（已验证）」
+ */
+fun logCredentialImport(
+    source: String,
+    cookieHeader: String?,
+    outcome: String,
+    realName: String? = null,
+    studentId: String? = null,
+    level: DiagLevel = DiagLevel.INFO
+) {
+    val fingerprint = credentialFingerprintOf(cookieHeader)
+    AppDiagnostics.log(
+        level = level,
+        tag = IMPORT_DIAG_TAG,
+        message = "凭据导入：$outcome",
+        detail = buildString {
+            append("来源=").append(source)
+            realName?.takeIf { it.isNotBlank() }?.let { append(" · 姓名=").append(it) }
+            studentId?.takeIf { it.isNotBlank() }?.let { append(" · 学号=").append(it) }
+            append(" · 凭据=").append(fingerprint?.toString() ?: "无")
+        }
+    )
 }
 
 /** 导入流程阶段（用于登录页与手动录入两条路径的等待反馈）。 */
@@ -267,6 +355,12 @@ object CredentialImportFlow {
                 val cookies = awaitCanvasCookies()
                 if (generation != myGeneration) return@launch
                 if (cookies.isNullOrBlank()) {
+                    logCredentialImport(
+                        source = "统一认证登录页",
+                        cookieHeader = null,
+                        outcome = "未捕获到 Cookies",
+                        level = DiagLevel.WARN
+                    )
                     publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.NO_COOKIE))
                     return@launch
                 }
@@ -285,19 +379,54 @@ object CredentialImportFlow {
                             cookieHeader = cookies,
                             displayName = displayName,
                             studentId = pendingStudentId,
-                            verifiedAt = System.currentTimeMillis()
+                            verifiedAt = System.currentTimeMillis(),
+                            realName = result.realName
                         )
                     }
-                    ProbeResult.Expired ->
+                    ProbeResult.Expired -> {
+                        logCredentialImport(
+                            source = "统一认证登录页",
+                            cookieHeader = cookies,
+                            outcome = "未通过验证（凭据已失效）",
+                            level = DiagLevel.WARN
+                        )
                         publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.EXPIRED))
-                    ProbeResult.Timeout ->
+                    }
+                    ProbeResult.Timeout -> {
+                        logCredentialImport(
+                            source = "统一认证登录页",
+                            cookieHeader = cookies,
+                            outcome = "未通过验证（探测超时）",
+                            level = DiagLevel.WARN
+                        )
                         publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.TIMED_OUT))
-                    ProbeResult.NetworkError ->
+                    }
+                    ProbeResult.NetworkError -> {
+                        logCredentialImport(
+                            source = "统一认证登录页",
+                            cookieHeader = cookies,
+                            outcome = "未通过验证（网络异常）",
+                            level = DiagLevel.WARN
+                        )
                         publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.NETWORK_ERROR))
-                    ProbeResult.Unknown ->
+                    }
+                    ProbeResult.Unknown -> {
+                        logCredentialImport(
+                            source = "统一认证登录页",
+                            cookieHeader = cookies,
+                            outcome = "未通过验证（结果无法识别）",
+                            level = DiagLevel.WARN
+                        )
                         publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.UNKNOWN))
+                    }
                 }
             } catch (t: Throwable) {
+                logCredentialImport(
+                    source = "统一认证登录页",
+                    cookieHeader = null,
+                    outcome = "导入异常：${t.javaClass.simpleName}",
+                    level = DiagLevel.ERROR
+                )
                 publish(myGeneration, ImportUiState.Decision(ImportDecisionReason.UNKNOWN, t.message))
             }
         }
@@ -351,7 +480,8 @@ object CredentialImportFlow {
         cookieHeader: String,
         displayName: String,
         studentId: String?,
-        verifiedAt: Long?
+        verifiedAt: Long?,
+        realName: String? = null
     ) {
         if (generation != expectedGeneration) return
         val saved = try {
@@ -366,12 +496,27 @@ object CredentialImportFlow {
                 verifiedAt = verifiedAt
             )
         } catch (t: Throwable) {
+            logCredentialImport(
+                source = "统一认证登录页",
+                cookieHeader = null,
+                outcome = "保存失败：${t.javaClass.simpleName}",
+                studentId = studentId,
+                level = DiagLevel.ERROR
+            )
             publish(expectedGeneration, ImportUiState.Decision(ImportDecisionReason.UNKNOWN, t.message))
             return
         }
         pendingCookies = null
         pendingDisplayName = null
         pendingStudentId = null
+        logCredentialImport(
+            source = "统一认证登录页",
+            cookieHeader = cookieHeader,
+            outcome = if (verifiedAt != null) "已保存（已验证）" else "已保存（未验证）",
+            realName = realName,
+            studentId = studentId,
+            level = if (verifiedAt != null) DiagLevel.INFO else DiagLevel.WARN
+        )
         publish(expectedGeneration, ImportUiState.Saved(saved.displayName, verifiedAt != null))
     }
 
