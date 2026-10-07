@@ -360,6 +360,8 @@ internal fun extractSessionCookie(accessToken: String?): String? {
  *
  * 刻意不算瞬时失败的情况：
  * - 未选课、未知错误（签到码无效）等业务性结论 —— 重试结果不变，只会浪费二维码窗口；
+ * - 二维码过期 —— **不是**「重发一次就好」：旧 rollCallToken 已经作废，必须重新扫码换新 token，
+ *   因此引擎绝不自动重发（那只会再拿一次同样的过期文案），重发由 UI「全部重试 → 扫码」驱动；
  * - 凭据失效 —— 需要人重新登录，重发没有意义；
  * - HTTP 200 的未知错误（token 伪造）同样是确定性的。
  */
@@ -437,10 +439,12 @@ internal data class ParsedResponse(
  * 判定顺序（用户/Lead 已确认）：
  * 1. 3xx → IAM  ⇒ CREDENTIAL_EXPIRED
  * 2. 正文含「签到失败：」 ⇒ FAILED(原因)
- * 3. 正文含「未知错误」或 课程=「无」 ⇒ UNKNOWN_ERROR
- * 4. 正文含「签到成功」 ⇒ SUCCESS；含「已签过」等 ⇒ ALREADY_SIGNED
- * 5. 200 + HTML 登录页 ⇒ CREDENTIAL_EXPIRED；其他 HTML ⇒ UNKNOWN_ERROR
- * 6. 其余 200 普通文本 ⇒ SUCCESS（兜底，`inferred=true`，并把原始片段留在 rawSnippet 供日后校准）
+ * 3. 正文含「二维码已过期 / 二维码过期 / 二维码已失效」 ⇒ QR_EXPIRED
+ *    （必须排在「未知错误」之前，否则这句会被吞掉，用户看不出要重新扫码）
+ * 4. 正文含「未知错误」或 课程=「无」 ⇒ UNKNOWN_ERROR
+ * 5. 正文含「签到成功」 ⇒ SUCCESS；含「已签过」等 ⇒ ALREADY_SIGNED
+ * 6. 200 + HTML 登录页 ⇒ CREDENTIAL_EXPIRED；其他 HTML ⇒ UNKNOWN_ERROR
+ * 7. 其余 200 普通文本 ⇒ SUCCESS（兜底，`inferred=true`，并把原始片段留在 rawSnippet 供日后校准）
  */
 internal object SignResponseParser {
 
@@ -460,6 +464,9 @@ internal object SignResponseParser {
     private val SUCCESS_MARKERS = listOf("签到成功")
     private val ALREADY_MARKERS = listOf("已签过", "已签到", "已经签到", "重复签到")
     private val UNKNOWN_MARKERS = listOf("未知错误")
+
+    /** 二维码过期的文案（唯一口径定义在 [SignResult.QR_EXPIRED_PATTERN]） */
+    private val QR_EXPIRED_PATTERN = SignResult.QR_EXPIRED_PATTERN
 
     /** 302/3xx 指向统一认证 */
     private val IAM_MARKERS = listOf("iam.tongji.edu.cn", "oauth2/authorize", "idp/oauth2")
@@ -552,6 +559,22 @@ internal object SignResponseParser {
                 courseName = courseName,
                 rawSnippet = snippet,
                 evidence = "匹配「签到失败：」"
+            )
+        }
+
+        // 「二维码已过期，请重新扫码」单独成一类：用旧 rollCallToken 重发多少次都一样，
+        // 必须让用户重新扫码换新的 token（详见 SignStatus.QR_EXPIRED）。
+        // 放在「未知错误」之前，否则这句话会被吞进 UNKNOWN_ERROR，用户就看不出该重扫了。
+        val expiredHit = QR_EXPIRED_PATTERN.find(text)
+        if (expiredHit != null) {
+            return ParsedResponse(
+                status = SignStatus.QR_EXPIRED,
+                reason = "二维码已过期，需要重新扫码后重试",
+                studentId = studentId,
+                realName = realName,
+                courseName = courseName,
+                rawSnippet = snippet,
+                evidence = "匹配「${expiredHit.value}」"
             )
         }
 

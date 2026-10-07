@@ -141,6 +141,126 @@ class SignInEngineParseTest {
         assertFalse(parsed.inferred)
     }
 
+    // ---------- 二维码过期（区别于未知错误） ----------
+
+    /**
+     * 真实文案：网络慢时请求发得太晚（约 10s），服务端直接回这一句。
+     *
+     * 这条必须在「未知错误」之前命中，否则用户看到的是「未知错误」，
+     * 根本不知道唯一出路是**重新扫码**（旧 rollCallToken 已经作废）。
+     */
+    @Test
+    fun `服务端过期文案被识别为 QR_EXPIRED 而不是未知错误`() {
+        val parsed = SignResponseParser.parse(
+            httpStatus = 200,
+            location = null,
+            body = "二维码已过期，请重新扫码"
+        )
+
+        assertEquals(SignStatus.QR_EXPIRED, parsed.status)
+        assertNotNull(parsed.reason)
+        assertTrue(
+            "原因必须告诉用户要重新扫码，实际：${parsed.reason}",
+            parsed.reason!!.contains("重新扫码")
+        )
+        assertTrue("不应被当成兜底推断", !parsed.inferred)
+        assertEquals("匹配「二维码已过期」", parsed.evidence)
+        assertNotNull("原始正文要留下，便于线上校准", parsed.rawSnippet)
+    }
+
+    @Test
+    fun `过期文案的常见变体同样被判为 QR_EXPIRED`() {
+        listOf(
+            "二维码已过期，请重新扫码",
+            "二维码过期",
+            "二维码已失效",
+            "二维码已过期",
+            "二维码 已过期，请重新扫码",
+            "签到失败提示：二维码已过期，请重新扫码"
+        ).forEach { body ->
+            val parsed = SignResponseParser.parse(httpStatus = 200, location = null, body = body)
+            assertEquals("正文「$body」应判为二维码过期", SignStatus.QR_EXPIRED, parsed.status)
+            assertTrue(
+                "过期结论必须带可读原因：$body",
+                !parsed.reason.isNullOrBlank()
+            )
+            assertTrue("过期原因要提到重新扫码：${parsed.reason}", parsed.reason!!.contains("重新扫码"))
+        }
+    }
+
+    @Test
+    fun `HTML 形态的过期文案同样被识别`() {
+        val body = """
+            <html><head><title>点名签到</title></head>
+            <body><div class="title">二维码已过期，请重新扫码</div>
+            <div>学号/工号：2551830</div><div>签到人员：姚董毅</div></body></html>
+        """.trimIndent()
+
+        val parsed = SignResponseParser.parse(httpStatus = 200, location = null, body = body)
+
+        assertEquals(SignStatus.QR_EXPIRED, parsed.status)
+        assertEquals("2551830", parsed.studentId)
+        assertEquals("姚董毅", parsed.realName)
+    }
+
+    @Test
+    fun `普通文本里的过期字样不会误伤其他分类`() {
+        // 「课程已过期」不是二维码过期 —— 不能把所有带「过期」的都算成需要重扫
+        val courseInfo = SignResponseParser.parse(
+            httpStatus = 200,
+            location = null,
+            body = "点名签到 学号/工号：2551830 签到人员：姚董毅 签到课程：软件工程（已过期）"
+        )
+        assertFalse(
+            "只有「二维码过期/失效」才算 QR_EXPIRED",
+            courseInfo.status == SignStatus.QR_EXPIRED
+        )
+
+        // 回归：原有 5 类判定不能被新规则抢走
+        assertEquals(
+            SignStatus.FAILED,
+            SignResponseParser.parse(200, null, notEnrolledSample).status
+        )
+        assertEquals(
+            SignStatus.UNKNOWN_ERROR,
+            SignResponseParser.parse(200, null, unknownErrorSample).status
+        )
+        assertEquals(
+            SignStatus.SUCCESS,
+            SignResponseParser.parse(200, null, "点名签到 签到成功 学号/工号：2551830").status
+        )
+        assertEquals(
+            SignStatus.CREDENTIAL_EXPIRED,
+            SignResponseParser.parse(
+                302,
+                "https://iam.tongji.edu.cn/idp/oauth2/authorize",
+                ""
+            ).status
+        )
+    }
+
+    @Test
+    fun `二维码过期可重试但不参与引擎自动重发`() {
+        val expired = SignResult(
+            sessionId = "s",
+            displayName = "d",
+            status = SignStatus.QR_EXPIRED,
+            httpStatus = 200,
+            reason = "二维码已过期，需要重新扫码后重试"
+        )
+
+        // 允许用户重试（重试路径会先重新扫码换新 token）……
+        assertTrue("过期后重新扫码再发是唯一出路，必须允许重试", expired.isRetryable)
+        assertTrue(expired.isQrExpired)
+        // ……但绝不能被当成「瞬时失败」在引擎里空转重发：旧 token 重发多少次都一样
+        assertFalse(
+            "旧 token 已作废，引擎自动重发只会再拿一次过期文案",
+            isTransientFailure(expired)
+        )
+        assertFalse("过期不等于成功", expired.status.isSuccessLike)
+        assertFalse("过期与未选课无关", expired.isNotEnrolled)
+    }
+
     // ---------- 成功文案未知 → 兜底 ----------
 
     @Test

@@ -61,6 +61,7 @@ data class AccountOutcome(
             status == SignStatus.SUCCESS -> "已签到"
             status == SignStatus.ALREADY_SIGNED -> "已签过"
             status == SignStatus.FAILED -> "签到失败"
+            status == SignStatus.QR_EXPIRED -> "二维码过期"
             status == SignStatus.CREDENTIAL_EXPIRED -> "凭据失效"
             status == SignStatus.NETWORK_ERROR -> "网络失败"
             status == SignStatus.TIMEOUT -> "超时"

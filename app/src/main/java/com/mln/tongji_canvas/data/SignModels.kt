@@ -23,6 +23,17 @@ enum class SignStatus {
     /** 会话凭据失效或缺失，需要用户重新登录 */
     CREDENTIAL_EXPIRED,
 
+    /**
+     * 签到二维码已过期 —— 服务端明确回「二维码已过期，请重新扫码」。
+     *
+     * 与 [UNKNOWN_ERROR] 分开的原因（用户视角完全不同）：
+     * 二维码约每 3s 刷新一次，[SignTarget.rollCallToken] 每次都会变、旧 token 立刻作废。
+     * 一旦请求发得太晚（网络慢，约 10s），服务端只会回这句过期文案 ——
+     * 此时**用旧 token 重发多少次都一样**，唯一出路是重新扫一次码拿新 token。
+     * 因此本状态被单独识别出来，UI 必须提示「重新扫码」，并让「全部重试」先扫码再重发。
+     */
+    QR_EXPIRED,
+
     /** 未预期的响应（未知错误文案、非预期状态码、无法识别的正文…） */
     UNKNOWN_ERROR,
 
@@ -80,8 +91,14 @@ data class SignResult(
             // 未选课重试多少次都一样，且会白白消耗二维码窗口
             SignStatus.FAILED -> !isNotEnrolled
             // 凭据失效需要重新登录，但用户可能刚登录完，允许手动重试
+            // 二维码过期**可以**重试，但前提是重新扫码换一个新 token ——
+            // 引擎不会自动重发（见 isTransientFailure），重发由「全部重试 → 扫码」这条路径驱动
             else -> true
         }
+
+    /** 是否因为二维码过期而失败（UI 据此提示用户重新扫码） */
+    val isQrExpired: Boolean
+        get() = status == SignStatus.QR_EXPIRED
 
     /** UI 是否应该展示原始正文片段 */
     val showsRawSnippet: Boolean
@@ -91,6 +108,14 @@ data class SignResult(
 
     companion object {
         val NOT_ENROLLED_MARKERS = listOf("未加入此课程", "未选课", "未加入课程")
+
+        /**
+         * 服务端「二维码已过期」的文案片段（判定口径见 [SignResponseParser]）。
+         *
+         * 三个都是「二维码 + 过期/失效」，因此用同一条紧凑正则匹配，既覆盖
+         * 「二维码已过期」「二维码过期」「二维码已失效」，也不会误伤课程名里的普通「过期」。
+         */
+        val QR_EXPIRED_PATTERN = Regex("""二维码\s*(?:已)?\s*(?:过期|失效)""")
     }
 }
 

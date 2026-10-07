@@ -171,6 +171,8 @@ app/src/main/java/com/mln/tongji_canvas/
 | Canvas 官方 API | 同一 cookie 在 `/lms/*` 有效，但 `/api/v1/users/self/profile`、`/api/v1/courses`、`/profile` **一律 401** → **该凭据只对 `/lms` 中间件层有效，不能用于 Canvas API**（`/api/v1/users/self` 恒 404，勿用于判活） |
 | 凭据寿命（实测） | **凭据长期有效，实测可跨月复用**。同一凭据连续请求后**原凭据依然有效**；服务端每次响应会 `Set-Cookie` 轮换出新的 `_canvas_middle_session`，但**原凭据不被作废**（原凭据 / 轮换后 cookie 均可识别为同一用户）→ `session_timeout` 在该部署上很可能未启用或设得极长 |
 | 凭据失效信号 | forscan 返回 **302 → `iam.tongji.edu.cn/idp/oauth2/authorize`** 是唯一可靠的失效信号。**不要依赖"过期时间"判断凭据是否可用** |
+| 二维码刷新 | **约每 3 秒刷新一次**，`rollCallToken` 每次刷新都会变；**旧 token 失效**。因此「重试」必须重新扫码取新 token，不能用扫码时捕获的旧 URL |
+| 二维码过期 | 网络差、超过约 10s 才发出请求时，服务端返回 **「二维码已过期，请重新扫码」**。届时唯一出路是重新扫码（官方指南原文：「最常见：签到超时，教室里人比较多，网络不稳定。一定要多试几次。」） |
 | 二维码前置校验 | `GET /lms-lti-rollcall-tongji/sign/getSignStatus/{courseCode}` **公开无需鉴权**，返回 `{"body":{"status":"off"}}` → 可预判"当前是否有正在进行的点名" |
 | 已签名单 | `GET /lms-lti-rollcall-tongji/rollcall/{signHistoryId}/qr` → `body.signedUserIds[]` 是权威已签名单，但**需要教师 LTI JWT**，学生 cookie 读不到 |
 | 限流 | Canvas `RequestThrottle` 按**用户/token**分桶，IP 仅匿名流量兜底 → **多账号同 IP 不共享限流桶**，并发不是瓶颈 |
@@ -221,6 +223,7 @@ app/src/main/java/com/mln/tongji_canvas/
 - [ ] **签到历史**：记录「帮谁签过、签过哪几次」，按时间倒序，含每人结果与原因
 - [ ] **诊断日志**：记录请求 URL / HTTP 状态 / 判定依据 / 原始响应片段，可一键复制上报；**绝不记录 Cookie 或 rollCallToken**，只记不可逆指纹
 - [ ] **批量重登**：凭据失效时一键重新登录该账号
+- [ ] **页内重新扫码**：「全部重试」先在结果页内启动相机扫新码（3 秒刷新导致旧 token 必失效），再只重发失败账号
 
 **技术**
 - [ ] **P2 架构**：抽 `MainViewModel` + `MainUiState`，拆分 1800+ 行的 `MainScreen.kt`，补 UI 测试
