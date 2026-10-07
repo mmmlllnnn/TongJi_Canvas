@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,6 +89,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.mln.tongji_canvas.data.Course
+import com.mln.tongji_canvas.data.CredentialProbe
+import com.mln.tongji_canvas.data.OAuth2Tokens
+import com.mln.tongji_canvas.data.ProbeResult
+import com.mln.tongji_canvas.data.SessionIdentityLogic
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
@@ -126,6 +131,8 @@ fun MainScreen(
     var addingUser by remember { mutableStateOf(false) }
     var addDisplayName by remember { mutableStateOf("") }
     var addAccessToken by remember { mutableStateOf("") }
+    var addVerifying by remember { mutableStateOf(false) }
+    var manualVerifyFailure by remember { mutableStateOf<ManualVerifyFailure?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
 
     // 课程相关状态
@@ -150,6 +157,41 @@ fun MainScreen(
         }
     }
 
+    fun closeAddDialog() {
+        addingUser = false
+        addDisplayName = ""
+        addAccessToken = ""
+        addVerifying = false
+    }
+
+    /** 手动录入：把 Cookies 存下来（[verifiedAt] 为 null 表示未经验证）。 */
+    fun saveManualSession(
+        displayName: String,
+        cookieHeader: String?,
+        studentId: String? = null,
+        verifiedAt: Long?
+    ) {
+        scope.launch {
+            val finalName = displayName.ifBlank { "用户${System.currentTimeMillis()}" }
+            repository.upsertSession(
+                displayName = finalName,
+                tokens = OAuth2Tokens(
+                    accessToken = cookieHeader?.takeIf { it.isNotBlank() },
+                    refreshToken = null,
+                    expiresIn = 3600L
+                ),
+                studentId = studentId,
+                verifiedAt = verifiedAt
+            )
+            refreshSessions()
+            closeAddDialog()
+            manualVerifyFailure = null
+            snackbarHostState.showSnackbar(
+                if (verifiedAt != null) "已验证并保存：$finalName" else "已保存（未验证）：$finalName"
+            )
+        }
+    }
+
     fun exportSessionsToClipboard() {
         scope.launch {
             val exportable = sessions
@@ -163,6 +205,8 @@ fun MainScreen(
                 val obj = JSONObject()
                 obj.put("displayName", user.displayName)
                 obj.put("accessToken", user.accessToken)
+                // 带上稳定标识，导入端才能按学号更新而不是新增重复账号
+                user.identityKey?.let { obj.put("identityKey", it) }
                 usersArray.put(obj)
             }
             root.put("users", usersArray)
@@ -207,12 +251,17 @@ fun MainScreen(
                         val name = obj.optString("displayName", obj.optString("name")).trim()
                         val token = obj.optString("accessToken", obj.optString("token")).trim()
                         if (name.isNotEmpty() && token.isNotEmpty()) {
-                            val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
+                            val tokens = OAuth2Tokens(
                                 accessToken = token,
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            val session = repository.addOrUpdateSession(name, tokens)
+                            // 备份里带 identityKey 时沿用（重名/改名也不会重复新增）
+                            val session = repository.upsertSession(
+                                displayName = name,
+                                tokens = tokens,
+                                identityKey = obj.optString("identityKey").trim().takeIf { it.isNotEmpty() }
+                            )
                             nameToIdMap[name] = session.id
                             imported++
                         }
@@ -254,12 +303,16 @@ fun MainScreen(
                         val name = obj.optString("displayName", obj.optString("name")).trim()
                         val token = obj.optString("accessToken", obj.optString("token")).trim()
                         if (name.isNotEmpty() && token.isNotEmpty()) {
-                            val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
+                            val tokens = OAuth2Tokens(
                                 accessToken = token,
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            repository.addOrUpdateSession(name, tokens)
+                            repository.upsertSession(
+                                displayName = name,
+                                tokens = tokens,
+                                identityKey = obj.optString("identityKey").trim().takeIf { it.isNotEmpty() }
+                            )
                             imported++
                         }
                     }
@@ -521,30 +574,68 @@ fun MainScreen(
         visible = addingUser,
         displayName = addDisplayName,
         accessToken = addAccessToken,
+        verifying = addVerifying,
         onDisplayNameChange = { addDisplayName = it },
         onAccessTokenChange = { addAccessToken = it },
         onDismiss = {
-            addingUser = false
-            addDisplayName = ""
-            addAccessToken = ""
+            if (!addVerifying) {
+                addingUser = false
+                addDisplayName = ""
+                addAccessToken = ""
+            }
         },
         onConfirm = {
-            if (addDisplayName.isNotBlank()) {
-                scope.launch {
-                    val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
-                        accessToken = addAccessToken.ifBlank { null },
-                        refreshToken = null,
-                        expiresIn = 3600L
-                    )
-                    repository.addOrUpdateSession(addDisplayName, tokens)
-                    refreshSessions()
-                    addingUser = false
-                    addDisplayName = ""
-                    addAccessToken = ""
+            val name = addDisplayName.trim()
+            val cookie = addAccessToken.trim()
+            when {
+                addVerifying -> Unit
+                name.isEmpty() && cookie.isEmpty() -> {
+                    scope.launch { snackbarHostState.showSnackbar("请输入用户昵称或 Cookies") }
+                }
+                // 没有可验证的凭据：保持原有的「仅录入昵称」行为
+                cookie.isEmpty() -> saveManualSession(name, cookieHeader = null, verifiedAt = null)
+                else -> {
+                    addVerifying = true
+                    scope.launch {
+                        try {
+                            val result = CredentialProbe.probe(cookie)
+                            if (result is ProbeResult.Valid) {
+                                val displayName = SessionIdentityLogic
+                                    .displayNameFor(result.realName, result.studentId)
+                                    .ifBlank { name }
+                                saveManualSession(
+                                    displayName = displayName,
+                                    cookieHeader = cookie,
+                                    studentId = result.studentId.takeIf { it.isNotBlank() },
+                                    verifiedAt = System.currentTimeMillis()
+                                )
+                            } else {
+                                // 验证未通过：不静默丢弃，交给用户决定是否仍要保存
+                                manualVerifyFailure = ManualVerifyFailure(name, cookie, result)
+                            }
+                        } finally {
+                            addVerifying = false
+                        }
+                    }
                 }
             }
         }
     )
+
+    // 手动录入：验证超时/失效/网络异常时让用户决定是否仍要保存（凭据照存，仅标记未验证）
+    manualVerifyFailure?.let { failure ->
+        ManualVerifyFailedDialog(
+            failure = failure,
+            onSaveAnyway = {
+                saveManualSession(
+                    displayName = failure.proposedName,
+                    cookieHeader = failure.cookieHeader,
+                    verifiedAt = null
+                )
+            },
+            onDismiss = { manualVerifyFailure = null }
+        )
+    }
 
     // 添加课程对话框
     AddCourseDialog(
@@ -1205,15 +1296,20 @@ private fun SessionStatusLabel(statusInfo: SessionStatusUi) {
 @Composable
 private fun SessionStatusInfo(session: UserSession): SessionStatusUi {
     val isDark = isSystemInDarkTheme()
-    return if (session.accessToken.isNullOrEmpty()) {
-        SessionStatusUi(
+    val warning = if (isDark) CanvasPalette.WarningOrangeDark else CanvasPalette.WarningOrange
+    return when {
+        session.accessToken.isNullOrEmpty() -> SessionStatusUi(
             text = "等待手动验证",
-            color = if (isDark) CanvasPalette.WarningOrangeDark else CanvasPalette.WarningOrange,
-            dotColor = if (isDark) CanvasPalette.WarningOrangeDark else CanvasPalette.WarningOrange
+            color = warning,
+            dotColor = warning
         )
-    } else {
-        SessionStatusUi(
-            text = "已保存认证信息",
+        session.lastVerifiedAt == null -> SessionStatusUi(
+            text = "已保存认证信息 · 未验证",
+            color = warning,
+            dotColor = warning
+        )
+        else -> SessionStatusUi(
+            text = "已验证 · 已保存认证信息",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             dotColor = null
         )
@@ -1457,6 +1553,7 @@ private fun AddUserDialog(
     visible: Boolean,
     displayName: String,
     accessToken: String,
+    verifying: Boolean,
     onDisplayNameChange: (String) -> Unit,
     onAccessTokenChange: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -1464,28 +1561,91 @@ private fun AddUserDialog(
 ) {
     if (!visible) return
     AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onConfirm) { Text("添加") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        onDismissRequest = { if (!verifying) onDismiss() },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !verifying) {
+                Text(if (verifying) "验证中…" else "添加")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !verifying) { Text("取消") }
+        },
         title = { Text("手动录入 Cookies") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "保存前会先验证 Cookies 是否有效，验证成功后自动使用真实姓名/学号。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = onDisplayNameChange,
                     label = { Text("用户昵称") },
+                    supportingText = { Text("可留空；验证成功后会自动回填真实姓名") },
+                    enabled = !verifying,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = accessToken,
                     onValueChange = onAccessTokenChange,
                     label = { Text("认证信息 (Cookies)") },
+                    enabled = !verifying,
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     maxLines = 6
                 )
+                if (verifying) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(
+                            "验证中…最多等待约 8 秒，请勿退出",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
+    )
+}
+
+/** 手动录入 Cookies 时验证未通过的信息（用户可决定是否仍然保存）。 */
+private data class ManualVerifyFailure(
+    val proposedName: String,
+    val cookieHeader: String,
+    val probe: ProbeResult
+)
+
+@Composable
+private fun ManualVerifyFailedDialog(
+    failure: ManualVerifyFailure,
+    onSaveAnyway: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val title = when (failure.probe) {
+        is ProbeResult.Valid -> "验证通过"
+        ProbeResult.Expired -> "凭据已失效"
+        ProbeResult.Timeout -> "验证超时"
+        ProbeResult.NetworkError -> "无法完成验证"
+        ProbeResult.Unknown -> "无法完成验证"
+    }
+    val message = when (failure.probe) {
+        is ProbeResult.Valid -> "凭据有效。"
+        ProbeResult.Expired -> "服务器要求重新登录，该 Cookies 已失效。是否仍要保存？保存后会标记为「未验证」。"
+        ProbeResult.Timeout -> "验证超时，未能确认 Cookies 是否有效。是否仍要保存？保存后会标记为「未验证」。"
+        ProbeResult.NetworkError -> "网络异常，未能验证 Cookies 是否有效。是否仍要保存？保存后会标记为「未验证」。"
+        ProbeResult.Unknown -> "验证返回内容无法识别。是否仍要保存？保存后会标记为「未验证」。"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onSaveAnyway) { Text("仍要保存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("不保存") } },
+        title = { Text(title) },
+        text = { Text(message) }
     )
 }
 

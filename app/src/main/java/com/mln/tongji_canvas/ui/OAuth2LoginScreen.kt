@@ -4,6 +4,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.webkit.WebResourceRequest
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PhoneIphone
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,24 +32,23 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.mln.tongji_canvas.data.CredentialImportFlow
+import com.mln.tongji_canvas.data.ImportDecisionReason
+import com.mln.tongji_canvas.data.ImportStage
+import com.mln.tongji_canvas.data.ImportUiState
 import com.mln.tongji_canvas.data.SessionRepository
-import com.mln.tongji_canvas.data.OAuth2Tokens
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.net.URLDecoder
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.FormBody
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,16 +57,16 @@ fun OAuth2LoginScreen(
     @Suppress("UNUSED_PARAMETER") initialUrl: String,
     onSaved: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val currentUrl: MutableState<String> = remember { mutableStateOf("") }
     val webViewRef: MutableState<WebView?> = remember { mutableStateOf(null) }
     val isLoginDetected: MutableState<Boolean> = remember { mutableStateOf(false) }
-    val countdown: MutableState<Int> = remember { mutableStateOf(0) }
     val isMobileUA: MutableState<Boolean> = remember { mutableStateOf(true) } // 默认使用手机UA
-    
+    val importState = CredentialImportFlow.state.value
+
     // 直接访问Canvas登录页面，让它自动完成OAuth2.0重定向链
     val loginUrl = "https://canvas.tongji.edu.cn/lms/mobile/forscan?courseCode=2333&rollCallToken=2333"
-    
+
     // 获取User-Agent字符串
     fun getUserAgent(): String {
         return if (isMobileUA.value) {
@@ -76,7 +77,7 @@ fun OAuth2LoginScreen(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
         }
     }
-    
+
     // 获取屏幕尺寸模拟的JavaScript代码
     fun getScreenSimulationJS(): String {
         return if (isMobileUA.value) {
@@ -148,7 +149,7 @@ fun OAuth2LoginScreen(
             """
         }
     }
-    
+
     // 获取检测覆盖的JavaScript代码
     fun getDetectionOverrideJS(): String {
         return if (isMobileUA.value) {
@@ -188,7 +189,7 @@ fun OAuth2LoginScreen(
             """
         }
     }
-    
+
     // 获取早期覆盖的JavaScript代码（在页面开始加载时注入）
     fun getEarlyOverrideJS(): String {
         return if (isMobileUA.value) {
@@ -255,7 +256,7 @@ fun OAuth2LoginScreen(
             """
         }
     }
-    
+
     // 初始化WebView并清除残留数据
     fun initializeWebView() {
         webViewRef.value?.let { webView ->
@@ -264,44 +265,43 @@ fun OAuth2LoginScreen(
             val cookieManager = android.webkit.CookieManager.getInstance()
             cookieManager.removeAllCookies(null)
             cookieManager.flush()
-            
+
             // 清除WebView缓存
             webView.clearCache(true)
             webView.clearHistory()
             webView.clearFormData()
-            
+
             // 重置状态
             isLoginDetected.value = false
-            countdown.value = 0
-            
+
             // 设置User-Agent
             webView.settings.userAgentString = getUserAgent()
             println("设置User-Agent: ${getUserAgent()}")
-            
+
             // 强制刷新缓存以确保UA生效
             webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            
+
             // 加载登录URL
             webView.loadUrl(loginUrl)
             println("WebView初始化完成，加载URL: $loginUrl")
         }
     }
-    
-    // 延迟提取cookies的函数
-    fun delayedExtractCookies() {
-        if (!isLoginDetected.value) {
-            isLoginDetected.value = true
-            scope.launch {
-                println("登录成功，等待5秒后提取cookies...")
-                // 倒计时显示
-                for (i in 5 downTo 1) {
-                    countdown.value = i
-                    kotlinx.coroutines.delay(1000) // 等待1秒
-                }
-                countdown.value = 0
-                extractCookiesAndSave(repository, onSaved, webViewRef.value!!)
-            }
-        }
+
+    /**
+     * 检测到登录成功：交给 [CredentialImportFlow] 读取 Cookies → 验证 → 保存。
+     * 没有固定倒计时；读取与验证都在应用级作用域里进行，用户返回/旋转不会丢凭据。
+     */
+    fun handleLoginDetected() {
+        if (isLoginDetected.value) return
+        isLoginDetected.value = true
+        CredentialImportFlow.begin(repository)
+    }
+
+    /** 用户选择「重新登录」：丢弃本次凭据并重新加载登录页。 */
+    fun restartLogin() {
+        CredentialImportFlow.discard()
+        isLoginDetected.value = false
+        initializeWebView()
     }
 
     fun applyUserAgentMode(targetMobile: Boolean) {
@@ -318,7 +318,7 @@ fun OAuth2LoginScreen(
             println("切换User-Agent: ${getUserAgent()}")
 
             isLoginDetected.value = false
-            countdown.value = 0
+            CredentialImportFlow.discard()
 
             webView.loadUrl(loginUrl)
             println("重新加载URL: $loginUrl")
@@ -331,14 +331,44 @@ fun OAuth2LoginScreen(
         }
     }
 
-    val statusMessage = if (isLoginDetected.value) {
-        if (countdown.value > 0) {
-            "登录成功！系统将在 ${countdown.value} 秒后自动提取认证信息。"
+    // 保存完成后提示并返回上一页（旋转/重建后依然会执行，不会静默丢弃结果）
+    LaunchedEffect(importState) {
+        val saved = importState as? ImportUiState.Saved ?: return@LaunchedEffect
+        val message = if (saved.verified) {
+            "已验证并保存账号：${saved.displayName}"
         } else {
-            "正在提取认证信息..."
+            "已保存账号（未验证）：${saved.displayName}"
         }
-    } else {
-        "请在下方统一认证页面完成登录，系统会自动捕获 Cookies。"
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        CredentialImportFlow.acknowledge()
+        onSaved()
+    }
+
+    val statusMessage: String = when {
+        importState is ImportUiState.Verifying -> when (importState.stage) {
+            ImportStage.READING_COOKIE -> "已捕获登录，正在读取 Cookies…"
+            ImportStage.PROBING -> "验证中… 正在向 Canvas 核实身份并获取真实姓名/学号（最多约 8 秒）。"
+            ImportStage.SAVING -> "正在保存账号…"
+        }
+        importState is ImportUiState.Decision -> when (importState.reason) {
+            ImportDecisionReason.TIMED_OUT -> "验证超时，等待你确认是否仍要保存。"
+            ImportDecisionReason.EXPIRED -> "凭据已失效，需要重新登录或选择仍要保存。"
+            ImportDecisionReason.NETWORK_ERROR -> "网络异常，未能完成验证，等待你确认是否仍要保存。"
+            ImportDecisionReason.UNKNOWN -> "验证结果无法识别，等待你确认是否仍要保存。"
+            ImportDecisionReason.NO_COOKIE -> "未捕获到 Cookies，请重试。"
+        }
+        importState is ImportUiState.Saved ->
+            if (importState.verified) "验证通过：${importState.displayName}" else "已保存（未验证）：${importState.displayName}"
+        isLoginDetected.value -> "已捕获登录，正在准备验证…"
+        else -> "请在下方统一认证页面完成登录，系统会自动捕获 Cookies。"
+    }
+
+    val statusChipText: String = when {
+        importState is ImportUiState.Verifying -> "验证中…"
+        importState is ImportUiState.Decision -> "需要确认"
+        importState is ImportUiState.Saved -> "已保存"
+        isLoginDetected.value -> "已捕获登录"
+        else -> "等待登录成功"
     }
 
     Scaffold(
@@ -377,7 +407,7 @@ fun OAuth2LoginScreen(
                 ) {
                     Text("操作提示", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "1. 使用统一认证账号登录 Canvas，系统会自动捕获 Cookies。",
+                        "1. 使用统一认证账号登录 Canvas，系统会自动捕获 Cookies 并验证身份。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -427,15 +457,7 @@ fun OAuth2LoginScreen(
                 AssistChip(
                     onClick = {},
                     enabled = false,
-                    label = {
-                        Text(
-                            if (isLoginDetected.value) {
-                                if (countdown.value > 0) "自动保存倒计时 ${countdown.value}s" else "已捕获，正在保存"
-                            } else {
-                                "等待登录成功"
-                            }
-                        )
-                    },
+                    label = { Text(statusChipText) },
                     leadingIcon = {
                         Icon(
                             if (isLoginDetected.value) Icons.Outlined.Verified else Icons.Outlined.Schedule,
@@ -494,7 +516,7 @@ fun OAuth2LoginScreen(
                                             !url.contains("openid_connect")
                                         ) {
                                             println("shouldOverrideUrlLoading检测到Canvas登录成功: $url")
-                                            delayedExtractCookies()
+                                            handleLoginDetected()
                                         }
                                         return !(url.startsWith("http://") || url.startsWith("https://"))
                                     }
@@ -526,7 +548,7 @@ fun OAuth2LoginScreen(
                                             !url.contains("openid_connect")
                                         ) {
                                             println("onPageFinished检测到Canvas登录成功: $url")
-                                            delayedExtractCookies()
+                                            handleLoginDetected()
                                         }
                                     }
                                 }
@@ -535,7 +557,7 @@ fun OAuth2LoginScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-                    if (!isLoginDetected.value) {
+                    if (!isLoginDetected.value || importState is ImportUiState.Verifying) {
                         LinearProgressIndicator(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -552,122 +574,72 @@ fun OAuth2LoginScreen(
             )
         }
     }
-}
 
-// 提取cookies并保存的函数
-private suspend fun extractCookiesAndSave(
-    repository: SessionRepository,
-    onSaved: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") webView: WebView
-) {
-    try {
-        println("开始提取cookies...")
-        // 使用WebView的CookieManager获取cookies
-        val cookieManager = android.webkit.CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        
-        // 获取Canvas域名的cookies
-        val canvasCookies = cookieManager.getCookie("https://canvas.tongji.edu.cn")
-        val iamCookies = cookieManager.getCookie("https://iam.tongji.edu.cn")
-        
-        println("Canvas cookies: $canvasCookies")
-        println("IAM cookies: $iamCookies")
-        
-        val allCookies = mutableListOf<String>()
-        canvasCookies?.let { allCookies.add(it) }
-        //iamCookies?.let { allCookies.add(it) } // 暂时不使用IAM cookies
-        
-        println("所有cookies: $allCookies")
-        
-        if (allCookies.isNotEmpty()) {
-            // 将cookies转换为简单的认证标识
-            val cookieString = allCookies.joinToString("; ")
-            val display = "用户${System.currentTimeMillis()}"
-            
-            println("保存用户: $display, cookies: $cookieString")
-            
-            // 创建一个模拟的OAuth2Tokens，实际存储cookies
-            val tokens = OAuth2Tokens(
-                accessToken = cookieString, // 将cookies作为accessToken存储
-                refreshToken = null,
-                expiresIn = 3600L
-            )
-            
-            repository.addOrUpdateSession(display, tokens)
-            onSaved()
-            println("用户保存成功!")
-            
-            // 清除WebView的cookies和缓存，为下次登录做准备
-            // 注意：这里不调用initializeWebView，因为会重新加载URL
-            // 只是清除数据，让下次进入时重新初始化
-        } else {
-            println("没有找到cookies")
-        }
-    } catch (e: Exception) {
-        // 处理错误
-        println("提取cookies时出错: ${e.message}")
-        e.printStackTrace()
-    }
-}
-
-
-private fun extractCodeFromUrl(url: String): String? {
-    return try {
-        val query = url.substringAfter("?")
-        val params = query.split("&").associate { param ->
-            val (key, value) = param.split("=", limit = 2)
-            key to URLDecoder.decode(value, "UTF-8")
-        }
-        params["code"]
-    } catch (e: Exception) {
-        null
-    }
-}
-
-private suspend fun exchangeCodeForToken(
-    code: String,
-    clientId: String,
-    clientSecret: String,
-    redirectUri: String
-): OAuth2Tokens? {
-    return try {
-        val httpClient = OkHttpClient()
-        val formBody = FormBody.Builder()
-            .add("grant_type", "authorization_code")
-            .add("code", code)
-            .add("client_id", clientId)
-            .add("client_secret", clientSecret)
-            .add("redirect_uri", redirectUri)
-            .build()
-        
-        val request = Request.Builder()
-            .url("https://iam.tongji.edu.cn/idp/oauth2/getToken")
-            .post(formBody)
-            .addHeader("Content-Type", "application/x-www-form-urlencoded")
-            .build()
-        
-        val response = httpClient.newCall(request).execute()
-        if (response.isSuccessful) {
-            val responseBody = response.body?.string() ?: ""
-            val json = JSONObject(responseBody)
-            
-            val accessToken = json.optString("access_token")
-            val refreshToken = json.optString("refresh_token")
-            val expiresIn = json.optLong("expires_in", 3600L)
-            
-            if (accessToken.isNotEmpty()) {
-                OAuth2Tokens(
-                    accessToken = accessToken,
-                    refreshToken = if (refreshToken.isNotEmpty()) refreshToken else null,
-                    expiresIn = expiresIn
-                )
-            } else {
-                null
+    if (importState is ImportUiState.Decision) {
+        ImportDecisionDialog(
+            state = importState,
+            onSaveAnyway = { CredentialImportFlow.commitUnverified(repository) },
+            onRetry = { restartLogin() },
+            onDiscard = {
+                CredentialImportFlow.discard()
+                // 允许用户继续操作后再次触发捕获与验证
+                isLoginDetected.value = false
             }
-        } else {
-            null
-        }
-    } catch (e: Exception) {
-        null
+        )
     }
+}
+
+@Composable
+private fun ImportDecisionDialog(
+    state: ImportUiState.Decision,
+    onSaveAnyway: () -> Unit,
+    onRetry: () -> Unit,
+    onDiscard: () -> Unit
+) {
+    val needsCookie = state.reason == ImportDecisionReason.NO_COOKIE
+    val title = when (state.reason) {
+        ImportDecisionReason.TIMED_OUT -> "验证超时"
+        ImportDecisionReason.EXPIRED -> "凭据已失效"
+        ImportDecisionReason.NETWORK_ERROR -> "无法完成验证"
+        ImportDecisionReason.UNKNOWN -> "无法完成验证"
+        ImportDecisionReason.NO_COOKIE -> "未捕获到 Cookies"
+    }
+    val message = when (state.reason) {
+        ImportDecisionReason.TIMED_OUT ->
+            "验证超时，未能确认凭据是否有效。是否仍要保存该账号？保存后会标记为「未验证」。"
+        ImportDecisionReason.EXPIRED ->
+            "服务器要求重新登录，当前凭据已失效。是否仍要保存？保存后会标记为「未验证」。"
+        ImportDecisionReason.NETWORK_ERROR ->
+            "网络异常，未能验证凭据是否有效。是否仍要保存该账号？保存后会标记为「未验证」。"
+        ImportDecisionReason.UNKNOWN ->
+            "验证返回内容无法识别，未能确认凭据是否有效。是否仍要保存该账号？保存后会标记为「未验证」。"
+        ImportDecisionReason.NO_COOKIE ->
+            "未能从页面读取到 Canvas Cookies，请重新登录后再试。"
+    }
+    AlertDialog(
+        onDismissRequest = onDiscard,
+        confirmButton = {
+            if (needsCookie) {
+                TextButton(onClick = onRetry) { Text("重新登录") }
+            } else {
+                TextButton(onClick = onSaveAnyway) { Text("仍要保存") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDiscard) { Text(if (needsCookie) "放弃" else "不保存") }
+        },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(message)
+                state.detail?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        "详情：$it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    )
 }
