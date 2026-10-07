@@ -18,12 +18,8 @@ import com.mln.tongji_canvas.ui.theme.Canvas_batch_signTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 本应用承载他人账号的登录态，禁止截屏、录屏与「最近任务」预览，
-        // 避免会话凭据随界面截图外泄。
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        // 不启用 FLAG_SECURE：该标记会阻止用户自己截图/录屏（含「最近任务」预览），
+        // 影响正常使用与问题反馈。改为信任持有设备的用户。
         enableEdgeToEdge()
         val repository = SessionRepository(this)
         setContent {

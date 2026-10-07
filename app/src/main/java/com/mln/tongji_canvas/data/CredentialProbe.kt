@@ -24,7 +24,13 @@ sealed interface ProbeResult {
     /** 凭据有效，并拿到真实身份。学号可能为空串（服务端只回了姓名）。 */
     data class Valid(val realName: String, val studentId: String) : ProbeResult
 
-    /** 服务器要求重新登录（302 → iam.tongji.edu.cn / 401 / 403）：凭据已失效。 */
+    /**
+     * 服务端明确拒绝鉴权（401 / 403）：凭据已失效。
+     *
+     * 注意：302 → iam.tongji.edu.cn **不**归入这里。实测同一份有效凭据会在
+     * 200 与 302 之间抖动（中间件限流/压力下先跳登录页），302 无法证明凭据无效，
+     * 只归为 [Unknown]。权威的失效判定由实际签到请求给出。
+     */
     data object Expired : ProbeResult
 
     /** 超过预算时间仍未拿到结论。 */
@@ -169,12 +175,15 @@ object CredentialProbe {
         }
 
         return response.use { resp ->
-            val location = resp.header("Location").orEmpty()
             val isRedirect = resp.code in 300..399
             when {
-                isRedirect && (location.contains("iam.tongji.edu.cn") ||
-                    location.contains("idp/oauth2/authorize")) -> ProbeResult.Expired
+                // 探测阶段【不能】把 302→IAM 当作「凭据失效」。
+                // 实测教训：同一份有效凭据在数十秒内会在 200 与 302→IAM 之间抖动
+                // （/lms/mobile/forscan 的中间件在限流/压力下会先跳登录页），
+                // 因此 302 只说明「中间件要求走 OAuth」，不能证明凭据无效。
+                // 真正的失效结论改由实际签到请求给出（那时 302 才是权威信号）。
                 isRedirect -> ProbeResult.Unknown
+                // 401/403 是服务端明确的鉴权拒绝，语义比 302 强得多
                 resp.code == 401 || resp.code == 403 -> ProbeResult.Expired
                 !resp.isSuccessful -> ProbeResult.Unknown
                 else -> {
