@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -29,10 +30,12 @@ import kotlin.coroutines.resume
  * - 302 → iam.tongji.edu.cn 表示凭据失效
  * - 不轮换也不写回 Cookie（原凭据不会被作废）
  *
- * 可靠性：
- * - 共享单个 [OkHttpClient]；连接/读超时各 10s；单账号总预算 15s（[withTimeoutOrNull]）
- * - 并发上限 [maxConcurrency]（默认 4）
- * - 只对「瞬时失败」指数退避重试，最多 [maxRetries] 次（默认 2）；业务性失败不重试
+ * 可靠性（全部围绕「二维码只活约 3s」调参，见各常量注释，**请勿再放大**）：
+ * - 共享单个 [OkHttpClient]；连接/读/写超时各 1.2s；单账号总预算 2.5s（[withTimeoutOrNull]）
+ * - 并发上限 [maxConcurrency]（默认 12）：实测单次往返仅 ~28ms，被选中的账号必须在**同一波**发出，
+ *   不允许再出现「12 个账号排 3 波」；某批超过上限时，多出的账号排第二波也远在 2.5s 预算内
+ * - 自动重试 [maxRetries]（默认 0）：3s 窗口内重试不可能落地，是否重发交给用户决定
+ *   —— UI 的「全部重试」是重新调用 [signAll]，与 [maxRetries] 无关，因此仍可用
  * - 协程取消即停：取消收集 [signAll] 返回的 Flow 会取消所有在途请求（OkHttp call 会被 cancel）
  */
 class SignInEngine(
@@ -42,13 +45,27 @@ class SignInEngine(
     private val perAccountTimeoutMs: Long = DEFAULT_PER_ACCOUNT_TIMEOUT_MS
 ) {
 
+    init {
+        // 兜底：调用方若自带 OkHttpClient，其 Dispatcher 默认 maxRequestsPerHost=5，
+        // 会把我们放出去的 12 个请求在 OkHttp 内部**再排成 3 波**，让 [maxConcurrency] 形同虚设。
+        // 这里只抬高、不降低，保证选中的账号真的同时发出。
+        val dispatcher = client.dispatcher
+        if (dispatcher.maxRequestsPerHost < maxConcurrency) {
+            dispatcher.maxRequestsPerHost = maxConcurrency
+        }
+        if (dispatcher.maxRequests < maxConcurrency) {
+            dispatcher.maxRequests = maxConcurrency
+        }
+    }
+
     /**
      * 并发地对 [sessions] 逐个签到，边完成边推送 [SignEvent]。
      *
      * 返回的 Flow 在收集结束时（或收集方取消时）保证所有子任务都已完成/已取消。
      */
     fun signAll(sessions: List<UserSession>, target: SignTarget): Flow<SignEvent> = channelFlow {
-        // 每个批次一个闸门：绝不允许一次性放 N 个请求出去
+        // 每批次一个闸门：上限 = 并发上限（默认 12），整班账号因此一波发出；
+        // 闸门只用于兜住超大名单，绝不是用来「分批节流」的 —— 分批就是浪费二维码寿命。
         val gate = Semaphore(maxConcurrency.coerceAtLeast(1))
         sessions.forEach { session ->
             launch(Dispatchers.IO) {
@@ -74,7 +91,11 @@ class SignInEngine(
     }
 
     /**
-     * 单个账号签到（含重试），永不抛出（除协程取消外）。
+     * 单个账号签到，永不抛出（除协程取消外）。
+     *
+     * 默认 **只发一次**（[DEFAULT_MAX_RETRIES] = 0）：整个流程必须在 [perAccountTimeoutMs]
+     * 内出结论，超过 2.5s 的答案对 3s 寿命的二维码已经没有价值。
+     * 失败项由 UI 的「全部重试」重新触发（等价于再调用本函数一次），不在引擎内自动重发。
      */
     suspend fun signOne(session: UserSession, target: SignTarget): SignResult {
         val cookie = extractSessionCookie(session.accessToken)
@@ -112,7 +133,7 @@ class SignInEngine(
                 sessionId = session.id,
                 displayName = session.displayName,
                 status = SignStatus.TIMEOUT,
-                reason = "单账号超时（${perAccountTimeoutMs / 1000}s）",
+                reason = "单账号超时（预算 ${perAccountTimeoutMs}ms）",
                 elapsedMs = elapsed,
                 attempts = attempts.coerceAtLeast(1),
                 evidence = "withTimeout"
@@ -181,7 +202,10 @@ class SignInEngine(
     private fun shouldRetry(result: SignResult): Boolean = isTransientFailure(result)
 
     private fun backoffMs(attempt: Int): Long {
-        // 400ms, 800ms, … 上限 2000ms（默认最多 2 次重试，总预算仍在 15s 内）
+        // 400ms, 800ms, … 上限 2000ms。
+        // 注意：默认 [DEFAULT_MAX_RETRIES] = 0，这条退避路径只在调用方显式
+        // `SignInEngine(maxRetries = n)`（手动/诊断）时才会走到 ——
+        // 3s 的二维码窗口里退避重试一定来不及，别再把它接回默认路径。
         val exp = BACKOFF_BASE_MS shl (attempt - 1).coerceIn(0, 10)
         return exp.coerceAtMost(BACKOFF_MAX_MS)
     }
@@ -190,18 +214,52 @@ class SignInEngine(
         /** 唯一必需的会话 Cookie 名（已实测验证） */
         const val SESSION_COOKIE_NAME = "_canvas_middle_session"
 
-        /** 失败重试次数上限（用户已确认：最多 2 次，之后由用户手动重试） */
-        const val DEFAULT_MAX_RETRIES = 2
+        /**
+         * 失败自动重试次数上限：**默认 0**。
+         *
+         * 二维码展示后约 3s 就失效（用户实测），而单次请求往返约 28ms ——
+         * 一旦第一发失败（超时/DNS 抖动），退避 400ms 起的第二次请求只会在二维码死后空等，
+         * 让用户以为「点了没反应」。因此引擎不再自动重试：是否重发由用户决定，
+         * UI 的「全部重试」会重新调用 [signAll]，那条路径与这个参数无关、始终可用。
+         * 该参数只保留给手动/诊断场景（`SignInEngine(maxRetries = n)`）。
+         */
+        const val DEFAULT_MAX_RETRIES = 0
 
-        /** 并发上限（用户已确认：Semaphore(4)） */
-        const val DEFAULT_MAX_CONCURRENCY = 4
+        /**
+         * 并发上限：12。
+         *
+         * 取值依据：一次全选整班的规模约 12 个账号，12 就是「一波全部发出」；
+         * 旧值 4 会把 12 个账号排成 3 波，光排队就吃掉窗口。
+         * 实测单次往返约 28ms（DNS 4.6ms / TCP 0.6ms / TLS 12ms / TTFB 10.6ms），
+         * 即使某批超过 12，第二波也只是多 ~28ms 量级，仍远在 2.5s 预算内 ——
+         * 该上限只是防止超大名单一次性打爆 App，不是节流手段。
+         */
+        const val DEFAULT_MAX_CONCURRENCY = 12
 
-        /** 单账号总预算 */
-        const val DEFAULT_PER_ACCOUNT_TIMEOUT_MS = 15_000L
+        /**
+         * 单账号总预算：2.5s。
+         *
+         * 二维码寿命约 3s，留 ~0.5s 给结果推送与渲染；超过这个预算的等待没有意义 ——
+         * 结论回到用户手里时签到码已经死了（旧值 15s 是窗口的 5 倍）。
+         */
+        const val DEFAULT_PER_ACCOUNT_TIMEOUT_MS = 2_500L
 
-        private const val CONNECT_TIMEOUT_MS = 10_000L
-        private const val READ_TIMEOUT_MS = 10_000L
-        private const val WRITE_TIMEOUT_MS = 10_000L
+        /**
+         * 连接 / 读 / 写超时各 1.2s。
+         *
+         * 实测建连阶段合计不到 20ms、TTFB 约 10.6ms，1.2s 已是实测值的几十倍余量；
+         * 旧值 10s 比整个二维码窗口还长 3 倍，只会让 App 在码死后继续傻等。
+         */
+        private const val CONNECT_TIMEOUT_MS = 1_200L
+        private const val READ_TIMEOUT_MS = 1_200L
+        private const val WRITE_TIMEOUT_MS = 1_200L
+
+        /** Dispatcher 总并发上限（远大于单批规模，只做保护） */
+        private const val DISPATCHER_MAX_REQUESTS = 64
+
+        /** 每主机并发上限：必须 >= 并发上限，否则 OkHttp 会替我们排队（默认仅 5） */
+        private const val DISPATCHER_MAX_REQUESTS_PER_HOST = DEFAULT_MAX_CONCURRENCY
+
         private const val BACKOFF_BASE_MS = 400L
         private const val BACKOFF_MAX_MS = 2_000L
 
@@ -234,11 +292,24 @@ class SignInEngine(
         fun userAgentFor(sessionId: String): String =
             UA_POOL[sessionId.hashCode().mod(UA_POOL.size)]
 
-        /** 共享单个 OkHttpClient：10s 连接/读超时，且不自动跟随重定向（需要观察 302 → IAM） */
+        /**
+         * 共享单个 OkHttpClient：连接/读/写超时各 1.2s（3s 窗口的硬约束），
+         * 且不自动跟随重定向（需要观察 302 → IAM）。
+         *
+         * Dispatcher 的每主机并发必须 >= [DEFAULT_MAX_CONCURRENCY]：
+         * OkHttp 默认 `maxRequestsPerHost = 5`，会把我们已放出的 12 个请求在内部再排成队列，
+         * 让 [DEFAULT_MAX_CONCURRENCY] 失效。
+         */
         fun defaultSignClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .readTimeout(READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .writeTimeout(WRITE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .dispatcher(
+                Dispatcher().apply {
+                    maxRequests = DISPATCHER_MAX_REQUESTS
+                    maxRequestsPerHost = DISPATCHER_MAX_REQUESTS_PER_HOST
+                }
+            )
             // 自行统计重试次数，避免 OkHttp 悄悄重发导致 attempts 失真
             .retryOnConnectionFailure(false)
             // 302 → iam 是「凭据失效」的判据，必须由我们自己看到
@@ -282,11 +353,14 @@ internal fun extractSessionCookie(accessToken: String?): String? {
 }
 
 /**
- * 该结果是否属于「瞬时失败」，值得自动重试（最多 [SignInEngine.DEFAULT_MAX_RETRIES] 次）。
+ * 该结果是否属于「瞬时失败」，即**重发一次有意义**。
  *
- * 刻意不重试的情况：
+ * 注意：引擎默认自动重试次数为 [SignInEngine.DEFAULT_MAX_RETRIES] = 0
+ * （3s 窗口内重试来不及），这个判定只用于 UI 决定「哪些项值得让用户手动重试」。
+ *
+ * 刻意不算瞬时失败的情况：
  * - 未选课、未知错误（签到码无效）等业务性结论 —— 重试结果不变，只会浪费二维码窗口；
- * - 凭据失效 —— 需要人重新登录，重试没有意义；
+ * - 凭据失效 —— 需要人重新登录，重发没有意义；
  * - HTTP 200 的未知错误（token 伪造）同样是确定性的。
  */
 internal fun isTransientFailure(result: SignResult): Boolean = when (result.status) {
