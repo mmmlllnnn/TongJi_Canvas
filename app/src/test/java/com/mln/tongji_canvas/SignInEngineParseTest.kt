@@ -10,6 +10,7 @@ import com.mln.tongji_canvas.data.SignTargetParse
 import com.mln.tongji_canvas.data.UserSession
 import com.mln.tongji_canvas.data.decodeUtf8
 import com.mln.tongji_canvas.data.extractSessionCookie
+import com.mln.tongji_canvas.data.htmlToPlainText
 import com.mln.tongji_canvas.data.isTransientFailure
 import com.mln.tongji_canvas.data.truncateSnippet
 import kotlinx.coroutines.flow.toList
@@ -460,5 +461,60 @@ class SignInEngineParseTest {
             "https://canvas.tongji.edu.cn/lms/mobile/forscan?courseCode=1&rollCallToken=2"
         )
         return (parsed as SignTargetParse.Valid).target
+    }
+
+    // ---------- 真实 HTML 正文（回归测试）----------
+    //
+    // 之前所有样本都是「纯文本」，字段之间带空格，因此测试全绿；
+    // 但服务端真实返回的是 HTML，姓名与标签之间**没有空格**：
+    //   <div>签到人员：骆欣畅</div>
+    // 于是在真机上姓名被解析成「骆欣畅</div>」，卡片直接把它显示了出来。
+    // 这两个用例用真实 HTML 结构锁死该回归。
+
+    private val realHtmlSample = """
+        <html lang="zh-CN"><head><title>点名签到</title><meta charset=utf-8></head>
+        <body><div id="app" data-v-1d9b105c="">
+        <div class="title"> 签到失败：未加入此课程 </div>
+        <div>学号/工号：2551830</div> <div>签到人员：姚董毅</div>
+        <div>签到课号：120:2000287001001</div>
+        <div>签到课程：软件工程形式化方法 2000287001001</div>
+        <div> 若显示学号错误,点击这里进行重置.</div>
+        </div></body></html>
+    """.trimIndent()
+
+    @Test
+    fun `HTML 正文里姓名不会把闭合标签一起吃进去`() {
+        val parsed = SignResponseParser.parse(httpStatus = 200, location = null, body = realHtmlSample)
+
+        assertEquals("姚董毅", parsed.realName)
+        assertEquals("2551830", parsed.studentId)
+        assertEquals(SignStatus.FAILED, parsed.status)
+        assertEquals("未加入此课程", parsed.reason)
+        assertFalse(
+            "姓名不应包含 HTML 标签残留：${parsed.realName}",
+            parsed.realName!!.contains("<") || parsed.realName!!.contains(">")
+        )
+    }
+
+    @Test
+    fun `htmlToPlainText 会剥离标签并解码常见实体`() {
+        val plain = htmlToPlainText(
+            "<div>签到人员：骆欣畅</div><div>学号/工号：2551633</div><br><div>签到课程：&nbsp;软件工程</div>"
+        )
+        assertFalse("不应残留标签：$plain", plain.contains("<") || plain.contains(">"))
+        assertTrue("应保留姓名：$plain", plain.contains("签到人员：骆欣畅"))
+        assertTrue("应保留学号：$plain", plain.contains("学号/工号：2551633"))
+        assertTrue("&nbsp; 应被解码为空格：$plain", plain.contains("签到课程： 软件工程"))
+
+        // 未选课样本换成 HTML 形态后，各字段依然要解析正确
+        val parsed = SignResponseParser.parse(
+            httpStatus = 200,
+            location = null,
+            body = "<div>点名签到</div><div>未知错误</div><div>学号/工号：2551830</div>" +
+                "<div>签到人员：姚董毅</div><div>签到课程：无</div>"
+        )
+        assertEquals("姚董毅", parsed.realName)
+        assertEquals("2551830", parsed.studentId)
+        assertEquals(SignStatus.UNKNOWN_ERROR, parsed.status)
     }
 }

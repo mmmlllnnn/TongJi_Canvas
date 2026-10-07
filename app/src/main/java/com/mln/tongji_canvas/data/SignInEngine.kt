@@ -298,6 +298,34 @@ internal fun isTransientFailure(result: SignResult): Boolean = when (result.stat
 /** 必须显式按 UTF-8 解码，不能依赖平台默认编码 */
 internal fun decodeUtf8(bytes: ByteArray): String = String(bytes, Charsets.UTF_8)
 
+/**
+ * 把 HTML 正文压成纯文本，再交给各字段正则。
+ *
+ * 实测问题：服务端返回的 `签到人员：骆欣畅</div>` 里，姓名与闭合标签之间
+ * **没有空格**，直接对原始 HTML 用 `\S+` 会把 `</div>` 一起吃进姓名
+ * （真机卡片上出现过「骆欣畅</div>」）。统一先剥标签可让所有字段都干净。
+ */
+internal fun htmlToPlainText(body: String): String {
+    var t = body
+    // script/style 整块丢掉，避免其中的符号干扰
+    t = t.replace(Regex("""(?is)<script\b.*?</script>"""), " ")
+    t = t.replace(Regex("""(?is)<style\b.*?</style>"""), " ")
+    // 换行类标签先变成空格，保证字段之间仍有分隔
+    t = t.replace(Regex("""(?i)<\s*br\s*/?\s*>"""), " ")
+    t = t.replace(Regex("""(?i)</\s*(div|p|td|tr|li|h[1-6])\s*>"""), " ")
+    // 其余标签一律删掉
+    t = t.replace(Regex("""<[^>]*>"""), "")
+    // 常见实体（&amp; 必须最后处理，避免二次解码）
+    t = t.replace("&nbsp;", " ")
+        .replace("&colon;", "：")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+    return t.replace(Regex("""[ \t\u00a0]+"""), " ").trim()
+}
+
 private fun elapsedMsSince(startedNs: Long): Long =
     ((System.nanoTime() - startedNs) / 1_000_000L).coerceAtLeast(0L)
 
@@ -346,9 +374,10 @@ internal object SignResponseParser {
     private const val NO_COURSE = "无"
 
     private val STUDENT_ID_REGEX = Regex("学号/工号：([0-9A-Za-z]+)")
-    private val REAL_NAME_REGEX = Regex("签到人员：([^\\s]+)")
+    /** 姓名：不能吃掉 HTML 标签（页面里姓名后紧跟 </div>，且中间没有空格） */
+    private val REAL_NAME_REGEX = Regex("""签到人员\s*[:：]\s*([^\s<>&"']+)""")
     private val COURSE_REGEX = Regex("签到课程：([^0-9]+)")
-    private val FAIL_REASON_REGEX = Regex("签到失败：([^\\s]+)")
+    private val FAIL_REASON_REGEX = Regex("""签到失败\s*[:：]\s*([^\s<>&"']+)""")
 
     /** 课程名后面的页面尾巴，取到就截断 */
     private val COURSE_TAIL_MARKERS =
@@ -425,7 +454,7 @@ internal object SignResponseParser {
         }
 
         // 4) 正文判定
-        val text = body.orEmpty()
+        val text = htmlToPlainText(body.orEmpty())
         if (text.isBlank()) {
             return ParsedResponse(
                 status = SignStatus.UNKNOWN_ERROR,
@@ -499,8 +528,10 @@ internal object SignResponseParser {
             )
         }
 
-        if (looksLikeHtml(text)) {
-            val lower = text.lowercase()
+        // 注意：必须用【原始正文】判断，不能用已剥离标签的 text ——
+        // 否则 <html>/<body> 都被删掉了，这里永远判不出 HTML，登录页防线失效。
+        if (looksLikeHtml(body.orEmpty())) {
+            val lower = body.orEmpty().lowercase()
             return if (LOGIN_PAGE_MARKERS.any { lower.contains(it) }) {
                 ParsedResponse(
                     status = SignStatus.CREDENTIAL_EXPIRED,
