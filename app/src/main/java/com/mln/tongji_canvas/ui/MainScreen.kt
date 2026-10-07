@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,12 +97,12 @@ import com.mln.tongji_canvas.data.SessionIdentityLogic
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
+import com.mln.tongji_canvas.ui.components.LoadingShimmerLines
 import com.mln.tongji_canvas.ui.theme.CanvasPalette
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
-import kotlin.math.absoluteValue
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
@@ -121,27 +122,29 @@ fun MainScreen(
     val clipboardManager = LocalClipboardManager.current
 
     var sessions by remember { mutableStateOf<List<UserSession>>(emptyList()) }
+    // 首次加载完成前为 true：避免冷启动时先闪一下「暂无账号」空状态
+    var sessionsLoaded by remember { mutableStateOf(false) }
     var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var selectedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var checkedCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingSession by remember { mutableStateOf<UserSession?>(null) }
-    var editDisplayName by remember { mutableStateOf("") }
-    var editAccessToken by remember { mutableStateOf("") }
+    var editDisplayName by rememberSaveable { mutableStateOf("") }
+    var editAccessToken by rememberSaveable { mutableStateOf("") }
     var editUserCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var addingUser by remember { mutableStateOf(false) }
-    var addDisplayName by remember { mutableStateOf("") }
-    var addAccessToken by remember { mutableStateOf("") }
+    // 对话框里的输入用 rememberSaveable：旋转屏幕/进程重建时不再丢失已粘贴的长 Cookie
+    var addDisplayName by rememberSaveable { mutableStateOf("") }
+    var addAccessToken by rememberSaveable { mutableStateOf("") }
     var addVerifying by remember { mutableStateOf(false) }
     var manualVerifyFailure by remember { mutableStateOf<ManualVerifyFailure?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
 
     // 课程相关状态
     var showAddCourseDialog by remember { mutableStateOf(false) }
-    var addCourseName by remember { mutableStateOf("") }
+    var addCourseName by rememberSaveable { mutableStateOf("") }
     var addCourseNameError by remember { mutableStateOf(false) }
     var addCourseMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingCourse by remember { mutableStateOf<Course?>(null) }
-    var editCourseName by remember { mutableStateOf("") }
+    var editCourseName by rememberSaveable { mutableStateOf("") }
     var editCourseMemberIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     // 折叠状态
@@ -154,6 +157,7 @@ fun MainScreen(
         scope.launch {
             sessions = repository.getAllSessions()
             courses = repository.getAllCourses()
+            sessionsLoaded = true
         }
     }
 
@@ -340,8 +344,6 @@ fun MainScreen(
         refreshSessions()
     }
 
-    LaunchedEffect(repository) { refreshSessions() }
-
     LaunchedEffect(sessions) {
         if (sessions.isEmpty()) return@LaunchedEffect
         val allIds = sessions.map { it.id }.toSet()
@@ -374,11 +376,6 @@ fun MainScreen(
 
     LaunchedEffect(allUsersExpanded) {
         repository.saveAllUsersExpanded(allUsersExpanded)
-    }
-
-    LaunchedEffect(courses) {
-        val validCourseIds = courses.map { it.id }.toSet()
-        checkedCourseIds = checkedCourseIds.filter { validCourseIds.contains(it) }.toSet()
     }
 
     val topBarState = rememberTopAppBarState()
@@ -437,10 +434,35 @@ fun MainScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             AnimatedContent(
-                targetState = sessions.isEmpty(),
+                targetState = when {
+                    !sessionsLoaded -> "loading"
+                    sessions.isEmpty() -> "empty"
+                    else -> "content"
+                },
                 label = "session_list_state"
-            ) { isEmpty ->
-                if (isEmpty) {
+            ) { listState ->
+                when (listState) {
+                "loading" -> {
+                    // 首次加载是异步的，先显示骨架而不是闪一下「暂无账号」
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        repeat(3) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(32.dp),
+                                tonalElevation = 2.dp
+                            ) {
+                                LoadingShimmerLines(
+                                    lines = 2,
+                                    modifier = Modifier.padding(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                "empty" -> {
                     EmptyStatePanel(
                         icon = Icons.Outlined.PersonAdd,
                         title = "暂无账号",
@@ -449,12 +471,12 @@ fun MainScreen(
                         onPrimaryAction = { showAddMenu = true },
                         modifier = Modifier.fillMaxWidth()
                     )
-                } else {
+                }
+                else -> {
                     GroupedSessionList(
                         sessions = sessions,
                         courses = courses,
                         selectedUserIds = selectedUserIds,
-                        checkedCourseIds = checkedCourseIds,
                         allUsersExpanded = allUsersExpanded,
                         onToggleAllUsersExpanded = { allUsersExpanded = !allUsersExpanded },
                         onToggleSelection = { id, checked ->
@@ -468,13 +490,11 @@ fun MainScreen(
                                 sessions.any { it.id == mid }
                             }
                             selectedUserIds = updated
-                            checkedCourseIds = checkedCourseIds + course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onDeselectAllInCourse = { course ->
                             val updated = selectedUserIds - course.memberIds.toSet()
                             selectedUserIds = updated
-                            checkedCourseIds = checkedCourseIds - course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onEditUser = { session ->
@@ -508,6 +528,7 @@ fun MainScreen(
                             showAddCourseDialog = true
                         }
                     )
+                }
                 }
             }
         }
@@ -722,7 +743,6 @@ private fun GroupedSessionList(
     sessions: List<UserSession>,
     courses: List<Course>,
     selectedUserIds: Set<String>,
-    checkedCourseIds: Set<String>,
     allUsersExpanded: Boolean,
     onToggleAllUsersExpanded: () -> Unit,
     onToggleSelection: (String, Boolean) -> Unit,
@@ -765,7 +785,10 @@ private fun GroupedSessionList(
         // 各个课程分组
         courses.forEach { course ->
             val courseMembers = sessions.filter { course.memberIds.contains(it.id) }
-            val allSelected = checkedCourseIds.contains(course.id)
+            // 全选状态由 selectedUserIds 派生，不再单独存一份影子状态：
+            // 手动勾选/移除成员后表头会自动同步，旋转屏幕也不会失真
+            val allSelected = courseMembers.isNotEmpty() &&
+                courseMembers.all { selectedUserIds.contains(it.id) }
 
             item(key = "header_course_${course.id}") {
                 Spacer(Modifier.height(4.dp))
@@ -1257,7 +1280,9 @@ private fun SessionAvatar(name: String) {
     val initials = remember(name) { initialFor(name) }
     val style = remember(name, isDark) {
         val styles = if (isDark) avatarStylesDark else avatarStyles
-        styles[(name.hashCode().absoluteValue) % styles.size]
+        // floorMod 而非 absoluteValue：后者在 hashCode == Int.MIN_VALUE 时仍为负数，
+        // 取模会得到负索引并抛 IndexOutOfBoundsException
+        styles[Math.floorMod(name.hashCode(), styles.size)]
     }
     Box(
         modifier = Modifier

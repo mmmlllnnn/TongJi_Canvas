@@ -18,10 +18,6 @@ data class UserSession(
     val identityKey: String? = null
 )
 
-data class ScanResult(
-    val url: String
-)
-
 data class OAuth2Tokens(
     val accessToken: String?,
     val refreshToken: String?,

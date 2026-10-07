@@ -127,11 +127,6 @@ class SessionRepository(private val context: Context) {
         prefs.edit().putString(KEY, arr.toString()).apply()
     }
 
-    fun isTokenValid(session: UserSession): Boolean {
-        return session.accessToken != null &&
-               (session.tokenExpiresAt == null || session.tokenExpiresAt > System.currentTimeMillis())
-    }
-
     // 保存选中的用户ID列表
     fun saveSelectedUserIds(userIds: Set<String>) {
         val jsonArray = JSONArray()
@@ -215,15 +210,6 @@ class SessionRepository(private val context: Context) {
         prefs.edit().putString(COURSES_KEY, arr.toString()).apply()
     }
 
-    // 保存当前激活的课程ID（null表示"全部人员"模式）
-    fun saveActiveCourseId(courseId: String?) {
-        prefs.edit().putString(ACTIVE_COURSE_KEY, courseId).apply()
-    }
-
-    fun getActiveCourseId(): String? {
-        return prefs.getString(ACTIVE_COURSE_KEY, null)
-    }
-
     fun saveAllUsersExpanded(expanded: Boolean) {
         prefs.edit().putBoolean(ALL_USERS_EXPANDED_KEY, expanded).apply()
     }
@@ -242,7 +228,6 @@ class SessionRepository(private val context: Context) {
         private const val KEY = "sessions_json"
         private const val SELECTED_USERS_KEY = "selected_user_ids"
         private const val COURSES_KEY = "courses_json"
-        private const val ACTIVE_COURSE_KEY = "active_course_id"
         private const val ALL_USERS_EXPANDED_KEY = "all_users_expanded"
     }
 }

@@ -482,7 +482,9 @@ fun OAuth2LoginScreen(
                                 webViewRef.value = this
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
-                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                // 登录页只加载 https 子资源（已实测 iam/canvas 页面 http:// 子资源为 0），
+                                // 因此禁止混合内容：避免中间人在 SSO 页面内注入脚本窃取会话。
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                 settings.loadsImagesAutomatically = true
                                 settings.javaScriptCanOpenWindowsAutomatically = true
                                 settings.setSupportMultipleWindows(true)

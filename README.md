@@ -181,38 +181,55 @@ app/src/main/java/com/mln/tongji_canvas/
 | IAM 密码传输 | 密码在浏览器内先经 **RSA-1024 公钥**加密再 POST（`/idp/themes/default/js/main/crypt.js`）。该硬编码值是**公钥**（`MIGf…`），只能加密不能解密；无客户端对称密钥、无时间戳字段 |
 | 服务端会话 cookie | Canvas 会话 cookie **无 `Expires`**（浏览器会话级），WebView 进程结束即丢 → 若出现"重启后需重新登录"，根因多半是未 `CookieManager.flush()` 持久化，而非服务端超时 |
 
-### 🚧 未实现 —— 产品方向
+### ✅ 已实现（本轮）
 
-- [ ] **签到引擎改为 HTTP 直发**（替代 N 个 WebView）：每账号一个 GET，Cookie 只放请求头，带超时/重试/结构化结果
-- [ ] **结果解析补充失败原因**：页面已返回 `签到失败：未加入此课程` 等具体原因，目前 App 只认 `签到成功`/`已签过`，把原因丢掉了
-- [ ] **按原因分区结果**：已签上 / 未加入此课程 / 凭据失效(302→IAM) / 码过期 / 网络失败，并支持「只重试失败项」
-- [ ] **重试上限交给用户**：设最大次数与时限，超时后由用户手动点击重试（不要自动无限重试，避免浪费二维码窗口）
-- [ ] **时间窗 UI**：倒计时、剩余未完成数、"全部已发出/全部已结束"（当前无超时机制，卡片可能永久停在"签到中"）
-- [ ] **导入后立即验证**：用 forscan 页面同时拿到 *凭据有效性 + 真实姓名 + 学号*，验完再退出（或超时退出）
-- [ ] **账号自动命名**：用页面返回的真实姓名/学号替代 `用户+毫秒时间戳`，解决"一列用户1728… 认不出谁是谁"
-- [ ] **稳定账号标识（identityKey）**：按学号去重，修复"每次登录都新增重复账号"
+**签到核心**
+- [x] **签到引擎改为 HTTP 直发**（替代 N 个 WebView）：每账号一个 GET，Cookie 只放请求头
+- [x] **消除 Cookie 串号**：不再使用全局 `CookieManager`，每会话独立 Cookie 头
+- [x] **结果解析含失败原因**：`签到失败：xxx`、`未知错误`、302→IAM 分别归类
+- [x] **结构化结果模型** `SignResult`（7 种状态 + 原因 + 姓名/学号 + 耗时 + 原始片段）
+- [x] **按原因分区结果** + 「只重试失败项」（不重试已成功/已签过/未选课的）
+- [x] **重试交给用户**：自动重试仅覆盖瞬时失败、最多 2 次；其余由用户手动重试
+- [x] **时间窗 UI**：倒计时（估算）、已发起/已完成/成功/失败计数
+- [x] **超时与取消**：每账号 15s 预算、并发上限 4、离开页面取消全部在途请求
+
+**凭据与账号**
+- [x] **导入后立即验证**：用 forscan 页面一次拿到 *凭据有效性 + 真实姓名 + 学号*
+- [x] **账号自动命名**：使用真实姓名(学号)，替代 `用户+毫秒时间戳`
+- [x] **稳定账号标识 identityKey**：按学号去重，修复「每次登录都新增重复账号」
+- [x] **验证超时/失败不静默**：提示原因，由用户选择「仍要保存（标记未验证）」或「不保存」
+- [x] **凭据可用性检测**：失效以 302→IAM 呈现为「凭据已失效，请重新登录」
+
+**清理与安全**
+- [x] **删除打印完整 Cookie 的日志**（原 8 处 → 0 处）
+- [x] **删除死代码**：`ScannerScreen`/`SimpleScannerScreen`/`processCookieQueue`/`forceLoadTrigger`/`extractCodeFromUrl`/`exchangeCodeForToken`/`ScanResult`/`isTokenValid`/`ActiveCourseId`/未使用路由与依赖
+- [x] **凭据加固**：`allowBackup=false` + 显式排除 `sessions.xml`（含 device-transfer）、`FLAG_SECURE`、禁止混合内容
+- [x] **仓库并发**：`SessionRepository` 读-改-写加 `Mutex`，避免并发导入丢更新
+- [x] **UI 状态修复**：加载三态、课程全选改为派生状态、关键输入 `rememberSaveable`、头像索引 `floorMod`
+- [x] **删除硬编码延迟**：登录 5000ms 倒计时改为轮询会话 Cookie；批量页 500ms 延迟移除
+- [x] **UA 策略**：每账号按 hash 分配独立 UA，不再共用硬编码设备串
+
+### 🚧 未实现
+
+**产品**
 - [ ] **扫码前置校验**：用公开的 `getSignStatus` 预判当前是否有点名
 - [ ] **二维码去重**：按 `signHistoryId` 判断是否重复扫同一个点名
-- [ ] **同步签到状态**：查看"自己那几个账号是否已签上"（注意：全班名单需教师 JWT，不可得）
+- [ ] **同步签到状态**：查看「自己那几个账号是否已签上」（全班名单需教师 JWT，不可得）
 - [ ] **一键勾选全部 / 常用组合置顶**
-- [ ] **可截图的结果汇总**，便于发群确认
-- [ ] **批量重登/凭据健康度提示**：显示"上次验证时间"，失效时引导重新登录
-- [ ] **凭据可用性检测（替代原「会话保活」构想）**：实测凭据不因时间失效，故无需保活；应在使用前用一次请求判定可用性，并把 302→IAM 明确呈现为「凭据已失效，请重新登录」
-- [ ] **Cookie 持久化**：Canvas 会话 cookie 无 `Expires`，需 `CookieManager.flush()`，否则 WebView 进程结束即丢登录态
+- [ ] **可复制的文本汇总**：一键复制「账号 + 状态 + 时间」纯文本发群确认
+      （已确认走文本而非截图，因此 `FLAG_SECURE` 保持不变、无需放开）
+- [ ] **批量重登**：凭据失效时一键重新登录该账号
 
-### 🚧 未实现 —— 技术方向
-
-- [ ] **P0 修复 Cookie 串号**：`BatchSignScreen.applyCookiesAndLoad` 里的全局 `removeAllCookies` + 共享 `CookieManager` 导致请求可能带着别人的会话发出（含"重试一个人清掉所有人 Cookie"）
-- [ ] **P0 UA 策略**：登录时抓取 WebView 真实发送的请求头并**逐会话存储/回放**；User-Agent **随机派发**，不要所有账号共用同一个硬编码 `SM-G998B`
-- [ ] **P0 凭据安全**：加密存储（Keystore/EncryptedSharedPreferences）、`allowBackup=false` 并排除 `sessions.xml`、删除打印完整 Cookie 的 `println`、加 `FLAG_SECURE`
-- [ ] **P1 补齐代码清理**：删除死代码（`processCookieQueue`、`forceLoadTrigger`、`ScannerScreen`、`SimpleScannerScreen`、`extractCodeFromUrl`/`exchangeCodeForToken`、未使用路由/依赖）
-- [ ] **P1 删除硬编码延迟**：登录后固定 **5000ms** 倒计时（`OAuth2LoginScreen.kt:297-300`，注意：这是**录入账密取得凭据**阶段，不是扫码后）、批量页 **500ms**（`BatchSignScreen.kt:97`）
-- [ ] **P1 WebView 生命周期**：加 `DisposableEffect` 销毁，修复旋转/返回导致的泄漏与静默丢凭据
-- [ ] **P1 UI 状态**：加载三态（消除冷启动"暂无账号"闪现）、课程全选改为派生状态、关键输入改 `rememberSaveable`、头像索引改 `floorMod`
-- [ ] **P1 仓库并发**：`SessionRepository` 读-改-写加锁，避免并发导入/编辑丢更新
-- [ ] **P2 架构**：抽 `MainViewModel` + `MainUiState`，拆分 1635 行的 `MainScreen.kt`，补纯逻辑单元测试
-- [ ] **P3 无障碍与国际化**：删除入口、开关标签、触摸目标 ≥48dp、硬编码中文抽 `strings.xml`
-- [ ] **修正文档表述**：README 的「认证信息永久有效」需与实际一致（Canvas 会话存在过期与吊销机制），并补充凭据安全提示
+**技术**
+- [ ] **P2 架构**：抽 `MainViewModel` + `MainUiState`，拆分 1800+ 行的 `MainScreen.kt`，补 UI 测试
+- [ ] **P3 无障碍**：删除入口（当前仅左滑）、开关内容描述、触摸目标 ≥48dp
+- [ ] **P3 国际化**：约 54 处硬编码中文抽到 `strings.xml`
+- [ ] **凭据加密存储**：Keystore/EncryptedSharedPreferences（当前为明文 SharedPreferences）
+- [ ] **登录页注入脚本精简**：`String.prototype.match` 全局覆写对第三方 SSO 页面有风险，
+      且批量签到已改为纯 HTTP 后，其必要性待评估（需真机验证，暂不改）
+- [ ] **真实成功文案校准**：`签到成功/已签过` 的真实页面文案仍未知，引擎已按兜底逻辑处理并
+      在卡片上暴露原始响应；真机跑一次成功签到即可收敛
+- [ ] **真机端到端验证**：本环境无设备，全部结论基于静态分析与无网络路径单测
 
 ### ⏸ 暂不改动（已确认保留）
 
