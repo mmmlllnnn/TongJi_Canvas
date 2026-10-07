@@ -1,21 +1,27 @@
 package com.mln.tongji_canvas.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
@@ -25,6 +31,7 @@ import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,10 +73,9 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
- * 二维码/签到码有效窗口的**估算**值，仅用于顶部倒计时提示。
- * 服务端没有下发窗口长度，这里 180s 只是保守估计，不做任何自动取消。
+ * 二维码/签到码有效窗口的**估算**值 —— 已不再使用。
+ * 服务端不下发窗口长度，编出来的倒计时会误导用户，改用纯事实展示后删除。
  */
-private const val ESTIMATED_WINDOW_SECONDS = 180L
 
 /**
  * 批量签到结果页（纯 HTTP 实现）。
@@ -79,6 +83,12 @@ private const val ESTIMATED_WINDOW_SECONDS = 180L
  * 与旧实现的根本区别：这里 **没有 WebView、没有 CookieManager、没有任何全局可变状态**。
  * 每个账号由 [SignInEngine] 单独发一个带 `Cookie: _canvas_middle_session=…` 头的 HTTP GET，
  * 因此不存在「A 的请求带着 B 的会话发出」的串号问题。
+ *
+ * 信息层级（本页唯一的设计目标）：
+ * 1. 第一眼 —— 顶部固定区一个巨大的「成功 X / Y」，不再需要往下翻；
+ * 2. 第二眼 —— 紧跟其后的失败列表，每人一行且直接带原因；
+ * 3. 已签到的账号收进可折叠区，默认不占地方。
+ * 因此刻意去掉了标题、签到链接、耗时与窗口倒计时。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,14 +106,18 @@ fun BatchSignScreen(
     val running = remember { mutableStateOf(false) }
     val generation = remember { mutableStateOf(0) }
     val job = remember { mutableStateOf<Job?>(null) }
-    val startedAtMs = remember { mutableStateOf<Long?>(null) }
-    val frozenElapsedMs = remember { mutableStateOf<Long?>(null) }
-    val nowMs = remember { mutableStateOf(System.currentTimeMillis()) }
+    val successExpanded = remember { mutableStateOf(false) }
 
     val targetParse = remember(targetUrl) { SignTarget.parse(targetUrl) }
     val target = (targetParse as? SignTargetParse.Valid)?.target
     val invalidReason = (targetParse as? SignTargetParse.Invalid)?.reason
 
+    /**
+     * 发起一批签到。
+     *
+     * 关键语义：**只清除 [targets] 里这些账号的结果**，其余账号的结论原样保留。
+     * 所以「全部重试」只重发失败项，早已签到的账号不会被重发、也不会丢结果。
+     */
     fun startBatch(targets: List<UserSession>) {
         val signTarget = target ?: return
         if (targets.isEmpty()) return
@@ -113,8 +127,6 @@ fun BatchSignScreen(
         job.value?.cancel()
 
         targets.forEach { results.remove(it.id) }
-        if (startedAtMs.value == null) startedAtMs.value = System.currentTimeMillis()
-        frozenElapsedMs.value = null
         running.value = true
 
         job.value = scope.launch {
@@ -145,16 +157,13 @@ fun BatchSignScreen(
                 throw cancelled
             } finally {
                 if (generation.value == myGeneration) {
-                    frozenElapsedMs.value = startedAtMs.value?.let {
-                        (System.currentTimeMillis() - it).coerceAtLeast(0L)
-                    }
                     running.value = false
                 }
             }
         }
     }
 
-    // 载入账号后立即开跑（与旧行为一致：进入结果页即批量签到）
+    // 载入账号后立即开跑（进入结果页即批量签到）
     LaunchedEffect(targetUrl) {
         val all = repository.getAllSessions()
         val filtered = if (selectedUserIds.isNotEmpty()) {
@@ -165,14 +174,6 @@ fun BatchSignScreen(
         sessions.clear()
         sessions.addAll(filtered)
         if (target != null && filtered.isNotEmpty()) startBatch(filtered)
-    }
-
-    // 秒级时钟，用于「耗时」与「窗口倒计时」
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMs.value = System.currentTimeMillis()
-            delay(1_000L)
-        }
     }
 
     // 离开页面：取消所有在途请求
@@ -187,165 +188,103 @@ fun BatchSignScreen(
     val inFlight = sessions.filter { results[it.id] == null }
     val retryable = sessions.filter { results[it.id]?.isRetryable == true }
 
-    val startedCount = sessions.count { startedIds[it.id] == true }
-    val successCount = completed.count { it.second.status == SignStatus.SUCCESS }
-    val alreadyCount = completed.count { it.second.status == SignStatus.ALREADY_SIGNED }
-    val failureCount = completed.size - successCount - alreadyCount
+    // 「签到成功」与「已签过」对用户是同一件事：这个人已经签上了
+    val signedCount = completed.count {
+        it.second.status == SignStatus.SUCCESS || it.second.status == SignStatus.ALREADY_SIGNED
+    }
+    val failedPairs = completed.filter {
+        it.second.status != SignStatus.SUCCESS && it.second.status != SignStatus.ALREADY_SIGNED
+    }
+    val signedPairs = completed.filter {
+        it.second.status == SignStatus.SUCCESS || it.second.status == SignStatus.ALREADY_SIGNED
+    }
+    val total = sessions.size
 
-    val startedAt = startedAtMs.value
-    val liveElapsedMs = startedAt?.let { (nowMs.value - it).coerceAtLeast(0L) } ?: 0L
-    val displayElapsedMs = if (running.value) liveElapsedMs else (frozenElapsedMs.value ?: liveElapsedMs)
-    val windowRemainingMs = (ESTIMATED_WINDOW_SECONDS * 1_000L - liveElapsedMs).coerceAtLeast(0L)
-
-    val sections = listOf(
-        ResultSection(
-            "签到成功", Icons.Outlined.CheckCircle, MaterialTheme.colorScheme.primary,
-            completed.filter { it.second.status == SignStatus.SUCCESS }
-        ),
-        ResultSection(
-            "已签过", Icons.Outlined.DoneAll, MaterialTheme.colorScheme.tertiary,
-            completed.filter { it.second.status == SignStatus.ALREADY_SIGNED }
-        ),
-        ResultSection(
-            "未选课", Icons.Outlined.School, MaterialTheme.colorScheme.secondary,
-            completed.filter { it.second.isNotEnrolled }
-        ),
-        ResultSection(
-            "签到失败", Icons.Outlined.ErrorOutline, MaterialTheme.colorScheme.error,
-            completed.filter { it.second.status == SignStatus.FAILED && !it.second.isNotEnrolled }
-        ),
-        ResultSection(
-            "凭据失效", Icons.Outlined.Lock, MaterialTheme.colorScheme.error,
-            completed.filter { it.second.status == SignStatus.CREDENTIAL_EXPIRED }
-        ),
-        ResultSection(
-            "未知错误", Icons.AutoMirrored.Outlined.HelpOutline, MaterialTheme.colorScheme.secondary,
-            completed.filter { it.second.status == SignStatus.UNKNOWN_ERROR }
-        ),
-        ResultSection(
-            "网络失败", Icons.Outlined.WifiOff, MaterialTheme.colorScheme.error,
-            completed.filter {
-                it.second.status == SignStatus.NETWORK_ERROR || it.second.status == SignStatus.TIMEOUT
-            }
-        )
-    ).filter { it.items.isNotEmpty() }
-
-    val scrollState = rememberScrollState()
-    val topBarState = rememberTopAppBarState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topBarState)
-
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            androidx.compose.material3.LargeTopAppBar(
-                title = {
-                    Column {
-                        Text("批量签到", style = MaterialTheme.typography.headlineSmall)
-                        Text(
-                            text = targetUrl.ifBlank { "未获取到签到链接" },
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { inner ->
+    Scaffold(modifier = Modifier.fillMaxSize()) { inner ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
             if (invalidReason != null) {
+                Spacer(Modifier.height(24.dp))
                 EmptyStatePanel(
                     icon = Icons.Outlined.Link,
                     title = "签到链接无效",
                     subtitle = invalidReason
                 )
-            } else {
-                BatchWindowCard(
-                    total = sessions.size,
-                    started = startedCount,
-                    completed = completed.size,
-                    success = successCount,
-                    already = alreadyCount,
-                    failure = failureCount,
-                    elapsedMs = displayElapsedMs,
-                    windowRemainingMs = windowRemainingMs,
-                    running = running.value,
-                    hasStarted = startedAtMs.value != null,
-                    targetUrl = targetUrl
-                )
+                return@Column
+            }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(
-                        onClick = { startBatch(retryable) },
-                        enabled = !running.value && retryable.isNotEmpty()
-                    ) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("只重试失败项 (${retryable.size})")
+            if (sessions.isEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                EmptyStatePanel(
+                    title = "没有可签到的账号",
+                    subtitle = "请先在首页添加账号，再扫描签到二维码。"
+                )
+                return@Column
+            }
+
+            // ── 第一眼：成功数 ─────────────────────────────
+            SignProgressHero(
+                signed = signedCount,
+                total = total,
+                running = running.value,
+                inFlight = inFlight.size,
+                failed = failedPairs.size,
+                onRetryAll = { startBatch(retryable) },
+                retryableCount = retryable.size,
+                onCancel = { job.value?.cancel() }
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                // ── 第二眼：失败列表（置顶、一行一人、带原因）──
+                if (failedPairs.isNotEmpty()) {
+                    item(key = "failed_header") {
+                        ResultSectionHeader(
+                            title = "未签上",
+                            count = failedPairs.size,
+                            icon = Icons.Outlined.ErrorOutline,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
-                    if (running.value) {
-                        TextButton(onClick = { job.value?.cancel() }) {
-                            Text("取消")
-                        }
+                    items(failedPairs, key = { "fail_${it.first.id}" }) { (session, result) ->
+                        FailedRow(session = session, result = result)
                     }
                 }
 
                 if (inFlight.isNotEmpty()) {
-                    ResultSectionHeader(
-                        title = if (running.value) "进行中" else "未执行",
-                        count = inFlight.size,
-                        icon = Icons.Outlined.Schedule,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
-                    inFlight.forEach { session ->
-                        SignResultCard(
-                            session = session,
-                            result = null,
-                            started = startedIds[session.id] == true,
-                            onRetry = null
+                    item(key = "inflight_header") {
+                        ResultSectionHeader(
+                            title = if (running.value) "进行中" else "未执行",
+                            count = inFlight.size,
+                            icon = Icons.Outlined.Schedule,
+                            color = MaterialTheme.colorScheme.tertiary
                         )
+                    }
+                    items(inFlight, key = { "inflight_${it.id}" }) { session ->
+                        InFlightRow(session = session, started = startedIds[session.id] == true)
                     }
                 }
 
-                if (sessions.isEmpty()) {
-                    EmptyStatePanel(
-                        title = "没有可签到的账号",
-                        subtitle = "请先在首页添加账号，再扫描签到二维码。"
-                    )
-                }
-
-                sections.forEach { section ->
-                    ResultSectionHeader(
-                        title = section.title,
-                        count = section.items.size,
-                        icon = section.icon,
-                        color = section.color
-                    )
-                    section.items.forEach { (session, result) ->
-                        SignResultCard(
-                            session = session,
-                            result = result,
-                            started = true,
-                            onRetry = if (result.isRetryable && !running.value) {
-                                { startBatch(listOf(session)) }
-                            } else {
-                                null
-                            }
+                // ── 已签到：默认折叠，不占地方 ──────────────
+                if (signedPairs.isNotEmpty()) {
+                    item(key = "signed_header") {
+                        SignedSectionHeader(
+                            count = signedPairs.size,
+                            expanded = successExpanded.value,
+                            onToggle = { successExpanded.value = !successExpanded.value }
                         )
+                    }
+                    if (successExpanded.value) {
+                        items(signedPairs, key = { "ok_${it.first.id}" }) { (session, result) ->
+                            SignedRow(session = session, result = result)
+                        }
                     }
                 }
             }
@@ -353,111 +292,254 @@ fun BatchSignScreen(
     }
 }
 
-private data class ResultSection(
-    val title: String,
-    val icon: ImageVector,
-    val color: Color,
-    val items: List<Pair<UserSession, SignResult>>
-)
-
+/**
+ * 顶部固定区：一个巨大的「成功 X / Y」。
+ * 这是整页的主视觉，保证用户不用滚动就能看到结果。
+ */
 @Composable
-private fun BatchWindowCard(
+private fun SignProgressHero(
+    signed: Int,
     total: Int,
-    started: Int,
-    completed: Int,
-    success: Int,
-    already: Int,
-    failure: Int,
-    elapsedMs: Long,
-    windowRemainingMs: Long,
     running: Boolean,
-    hasStarted: Boolean,
-    targetUrl: String
+    inFlight: Int,
+    failed: Int,
+    retryableCount: Int,
+    onRetryAll: () -> Unit,
+    onCancel: () -> Unit
 ) {
-    val progress = if (total == 0) 0f else completed.toFloat() / total.toFloat()
+    val progress = if (total == 0) 0f else signed.toFloat() / total.toFloat()
+    val allDone = !running && inFlight == 0
+
     Surface(
-        shape = RoundedCornerShape(32.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 12.dp),
+        shape = RoundedCornerShape(28.dp),
         tonalElevation = 3.dp
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("签到进度", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "$signed",
+                    style = MaterialTheme.typography.displayMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = " / $total",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Spacer(Modifier.weight(1f))
                 Text(
                     text = when {
-                        running -> "进行中"
-                        hasStarted -> "已结束"
-                        else -> "准备中"
+                        running || inFlight > 0 -> "签到中…"
+                        failed == 0 -> "全部签上"
+                        else -> "$failed 人未签上"
                     },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (running) {
-                        MaterialTheme.colorScheme.tertiary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when {
+                        running || inFlight > 0 -> MaterialTheme.colorScheme.tertiary
+                        failed == 0 -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.error
+                    },
+                    modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
 
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                StatText("已发起", started.toString())
-                StatText("已完成", completed.toString())
-                StatText("成功", (success + already).toString(), MaterialTheme.colorScheme.primary)
-                StatText("失败", failure.toString(), MaterialTheme.colorScheme.error)
-            }
-            if (already > 0) {
-                Text(
-                    text = "其中 $success 人本次签到、$already 人此前已签过",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Text(
-                text = "耗时 ${formatDuration(elapsedMs)}　·　" +
-                    if (windowRemainingMs > 0) {
-                        "窗口剩余 ${formatCountdown(windowRemainingMs)}（估算）"
-                    } else {
-                        "窗口可能已结束"
-                    },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth()
             )
 
-            AssistChip(
-                onClick = {},
-                enabled = false,
-                label = {
-                    Text(text = targetUrl, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) }
+            // 只在需要时才出现的操作：未完成时给「取消」，全部结束后给「全部重试」
+            when {
+                running || inFlight > 0 -> {
+                    TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) {
+                        Text("取消")
+                    }
+                }
+                retryableCount > 0 -> {
+                    FilledTonalButton(
+                        onClick = onRetryAll,
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("全部重试（$retryableCount）")
+                    }
+                }
+                allDone -> Unit
+            }
+        }
+    }
+}
+
+/** 未签上的账号：一行一人，直接带原因 */
+@Composable
+private fun FailedRow(session: UserSession, result: SignResult) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = session.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = result.reason ?: "签到失败",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/** 在途/未执行的账号：一行一人 */
+@Composable
+private fun InFlightRow(session: UserSession, started: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Outlined.Schedule,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = session.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (started) "请求中…" else "等待中…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
+/** 已签到的账号：一行一人，展开后才有细节 */
 @Composable
-private fun StatText(label: String, value: String, valueColor: Color = Color.Unspecified) {
-    Column {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            color = valueColor
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+private fun SignedRow(session: UserSession, result: SignResult) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = session.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val detail = result.realName?.takeIf { it.isNotBlank() }
+                    ?.let { name -> result.studentId?.takeIf { it.isNotBlank() }?.let { "$name · $it" } ?: name }
+                if (detail != null) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Text(
+                text = if (result.status == SignStatus.ALREADY_SIGNED) "已签过" else "已签到",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
+
+/** 已签到分组的可折叠表头 —— 默认折叠，不占用首屏 */
+@Composable
+private fun SignedSectionHeader(count: Int, expanded: Boolean, onToggle: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = "已签到 $count 人",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (expanded) "收起" else "展开",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = if (expanded) "收起" else "展开",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun ResultSectionHeader(title: String, count: Int, icon: ImageVector, color: Color) {
@@ -472,162 +554,4 @@ private fun ResultSectionHeader(title: String, count: Int, icon: ImageVector, co
     }
 }
 
-@Composable
-private fun SignResultCard(
-    session: UserSession,
-    result: SignResult?,
-    started: Boolean,
-    onRetry: (() -> Unit)?
-) {
-    val (statusLabel, statusColor, statusIcon) = if (result == null) {
-        Triple(
-            if (started) "签到中" else "排队中",
-            MaterialTheme.colorScheme.tertiary,
-            Icons.Outlined.Schedule
-        )
-    } else {
-        statusVisual(result)
-    }
 
-    val identity = listOfNotNull(
-        result?.realName,
-        result?.studentId?.let { "学号 $it" }
-    ).joinToString("　")
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        tonalElevation = 2.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(session.displayName, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = identity.ifEmpty {
-                            if (session.accessToken.isNullOrEmpty()) "未保存会话凭据" else "已保存会话凭据"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                AssistChip(
-                    onClick = {},
-                    enabled = false,
-                    label = { Text(statusLabel) },
-                    leadingIcon = { Icon(statusIcon, contentDescription = null, tint = statusColor) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = statusColor.copy(alpha = 0.12f),
-                        labelColor = statusColor
-                    )
-                )
-            }
-
-            if (result == null) {
-                LoadingShimmerLines(lines = 2, modifier = Modifier.fillMaxWidth())
-            } else {
-                result.reason?.let { reason ->
-                    Text(
-                        text = "原因：$reason",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = statusColor
-                    )
-                }
-                result.courseName?.let { course ->
-                    Text(
-                        text = "课程：$course",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        text = "耗时 ${formatDuration(result.elapsedMs)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (result.attempts > 1) {
-                        Text(
-                            text = "重试 ${result.attempts - 1} 次",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    result.httpStatus?.let { code ->
-                        Text(
-                            text = "HTTP $code",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                if (result.inferred) {
-                    Text(
-                        text = "兜底判定：未匹配到已知文案，请以教务系统为准",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
-                }
-                if (result.showsRawSnippet) {
-                    Text(
-                        text = "原始响应：${result.rawSnippet}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (onRetry != null) {
-                    OutlinedButton(onClick = onRetry) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("重试")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun statusVisual(result: SignResult): Triple<String, Color, ImageVector> = when {
-    result.status == SignStatus.SUCCESS ->
-        Triple("签到成功", MaterialTheme.colorScheme.primary, Icons.Outlined.CheckCircle)
-
-    result.status == SignStatus.ALREADY_SIGNED ->
-        Triple("已签过", MaterialTheme.colorScheme.tertiary, Icons.Outlined.DoneAll)
-
-    result.isNotEnrolled ->
-        Triple("未选课", MaterialTheme.colorScheme.secondary, Icons.Outlined.School)
-
-    result.status == SignStatus.FAILED ->
-        Triple("签到失败", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
-
-    result.status == SignStatus.CREDENTIAL_EXPIRED ->
-        Triple("凭据失效", MaterialTheme.colorScheme.error, Icons.Outlined.Lock)
-
-    result.status == SignStatus.UNKNOWN_ERROR ->
-        Triple("未知错误", MaterialTheme.colorScheme.secondary, Icons.AutoMirrored.Outlined.HelpOutline)
-
-    else ->
-        Triple("网络失败", MaterialTheme.colorScheme.error, Icons.Outlined.WifiOff)
-}
-
-private fun formatDuration(ms: Long): String =
-    if (ms < 10_000L) {
-        String.format(Locale.ROOT, "%.1fs", ms / 1000.0)
-    } else {
-        String.format(Locale.ROOT, "%.0fs", ms / 1000.0)
-    }
-
-private fun formatCountdown(ms: Long): String {
-    val totalSeconds = ms / 1_000L
-    return String.format(Locale.ROOT, "%d:%02d", totalSeconds / 60, totalSeconds % 60)
-}

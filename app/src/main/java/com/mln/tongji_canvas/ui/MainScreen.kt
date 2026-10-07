@@ -1489,7 +1489,7 @@ private fun DockButton(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1498,7 +1498,12 @@ private fun DockButton(
             Text(
                 label,
                 color = if (isDark) CanvasPalette.DockButtonTextDark else CanvasPalette.DockButtonText,
-                style = MaterialTheme.typography.titleSmall
+                style = MaterialTheme.typography.titleSmall,
+                // 不换行：「添加账号」在大字号/窄屏下会被挤成两行，
+                // 底部按钮高度不一致会很难看，宁可让文字自适应缩小
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
             )
         }
     }
