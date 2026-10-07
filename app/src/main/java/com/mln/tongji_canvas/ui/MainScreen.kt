@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhoneIphone
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.IosShare
@@ -479,6 +481,15 @@ fun MainScreen(
                         selectedUserIds = selectedUserIds,
                         allUsersExpanded = allUsersExpanded,
                         onToggleAllUsersExpanded = { allUsersExpanded = !allUsersExpanded },
+                        onSelectAllUsers = {
+                            val updated = sessions.map { it.id }.toSet()
+                            selectedUserIds = updated
+                            scope.launch { repository.saveSelectedUserIds(updated) }
+                        },
+                        onDeselectAllUsers = {
+                            selectedUserIds = emptySet()
+                            scope.launch { repository.saveSelectedUserIds(emptySet()) }
+                        },
                         onToggleSelection = { id, checked ->
                             val updated = if (checked) selectedUserIds + id else selectedUserIds - id
                             selectedUserIds = updated
@@ -746,6 +757,8 @@ private fun GroupedSessionList(
     allUsersExpanded: Boolean,
     onToggleAllUsersExpanded: () -> Unit,
     onToggleSelection: (String, Boolean) -> Unit,
+    onSelectAllUsers: () -> Unit,
+    onDeselectAllUsers: () -> Unit,
     onSelectAllInCourse: (Course) -> Unit,
     onDeselectAllInCourse: (Course) -> Unit,
     onEditUser: (UserSession) -> Unit,
@@ -766,7 +779,17 @@ private fun GroupedSessionList(
                 icon = Icons.Outlined.People,
                 expanded = allUsersExpanded,
                 onToggleExpanded = onToggleAllUsersExpanded,
-                accentColor = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent
+                accentColor = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent,
+                // 一键全选 / 全不选：扫码时间紧张时不必逐个点
+                allSelected = sessions.isNotEmpty() && sessions.all { selectedUserIds.contains(it.id) },
+                selectedCount = sessions.count { selectedUserIds.contains(it.id) },
+                onToggleSelectAll = {
+                    if (sessions.isNotEmpty() && sessions.all { selectedUserIds.contains(it.id) }) {
+                        onDeselectAllUsers()
+                    } else {
+                        onSelectAllUsers()
+                    }
+                }
             )
         }
 
@@ -847,7 +870,10 @@ private fun GroupHeader(
     icon: ImageVector,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
-    accentColor: Color
+    accentColor: Color,
+    allSelected: Boolean = false,
+    selectedCount: Int = 0,
+    onToggleSelectAll: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -869,6 +895,32 @@ private fun GroupHeader(
                 color = accentColor,
                 modifier = Modifier.weight(1f)
             )
+            if (onToggleSelectAll != null) {
+                // 一键全选/全不选；已选数量直接标在按钮上，省得再去找计数
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = accentColor.copy(alpha = if (allSelected) 0.22f else 0.12f),
+                    modifier = Modifier.clickable(onClick = onToggleSelectAll)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            if (allSelected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                            contentDescription = if (allSelected) "取消全选" else "全选",
+                            tint = accentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            if (allSelected) "取消全选" else "已选 $selectedCount / $count",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accentColor
+                        )
+                    }
+                }
+            }
             Surface(
                 shape = RoundedCornerShape(50),
                 color = accentColor.copy(alpha = 0.15f)
