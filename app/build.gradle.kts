@@ -14,8 +14,11 @@ android {
         applicationId = "com.mln.tongji_canvas"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20260520
-        versionName = "3.2.1"
+        // versionCode 必须单调递增（否则无法覆盖安装）。
+        // 4.0 相对 3.2.1(20260520) 是一次大版本：签到引擎重写为 HTTP 直发、
+        // 新增签到历史与诊断日志、页内重新扫码。取当日日期保证大于旧值。
+        versionCode = 20261008
+        versionName = "4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }
