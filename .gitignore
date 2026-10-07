@@ -6,6 +6,20 @@
 /build
 /captures
 .externalNativeBuild
+
+# 凭据/环境变量：绝不能提交（含真实会话 Cookie）
+.env
+.env.*
+*.env
+# 会话凭据落盘文件（明文 Cookie）与手动导出的凭据快照
+sessions.xml
+*.session.json
+*.cookies.txt
+# 签名密钥/发布参数
+keystore.properties
+signing.properties
+*.p12
+*.pepk
 .cxx
 /web
 
@@ -37,6 +51,9 @@ local.properties
 # Android Studio generated files
 *.jar
 *.class
+
+# 例外：Gradle wrapper 的 jar 必须入库，否则新克隆/CI 无法构建
+!gradle/wrapper/gradle-wrapper.jar
 
 # Keystore files
 *.jks

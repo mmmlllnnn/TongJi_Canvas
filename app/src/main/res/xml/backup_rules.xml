@@ -1,4 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  API 30 及以下的备份规则（android:fullBackupContent）。
+  会话凭据保存在 SharedPreferences("sessions") → 文件名为 sessions.xml，
+  其中含明文 Cookie，必须显式排除，绝不能进入备份/云同步。
+-->
 <full-backup-content>
-    <!-- 使用默认备份规则 -->
+    <exclude domain="sharedpref" path="sessions.xml" />
 </full-backup-content>

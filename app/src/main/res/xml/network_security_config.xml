@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">iam.tongji.edu.cn</domain>
-        <domain includeSubdomains="true">canvas.tongji.edu.cn</domain>
-    </domain-config>
+    <!--
+      仅允许 HTTPS：iam.tongji.edu.cn 与 canvas.tongji.edu.cn 均只提供 HTTPS，
+      因此不再为它们单独放行明文（原先的 domain-config cleartextTrafficPermitted="true" 已移除），
+      统一由 base-config 禁止明文流量。
+    -->
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>
-
-

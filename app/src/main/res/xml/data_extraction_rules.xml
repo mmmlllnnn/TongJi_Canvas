@@ -1,6 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  API 31+ 的数据提取规则（android:dataExtractionRules）。
+  注意：allowBackup="false" 只关闭云备份，不会关闭「设备到设备迁移」，
+  因此 cloud-backup 与 device-transfer 两段都必须排除 sessions.xml（含明文 Cookie）。
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- 使用默认数据提取规则 -->
+        <exclude domain="sharedpref" path="sessions.xml" />
     </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="sessions.xml" />
+    </device-transfer>
 </data-extraction-rules>

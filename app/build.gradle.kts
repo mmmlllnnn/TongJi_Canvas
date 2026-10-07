@@ -25,8 +25,11 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a","armeabi-v7a","x86")//,)//"armeabi-v7a","x86"
-            isUniversalApk = true // 不生成包含所有ABI的通用APK
+            // 仅为下列 ABI 生成分包 APK
+            include("arm64-v8a", "armeabi-v7a", "x86")
+            // 同时额外产出一个包含全部 ABI 的通用 APK（便于用户直接安装，无需挑选架构）
+            // 注意：这与上面「分包」并存，发布时会同时得到分包 APK 和通用 APK。
+            isUniversalApk = true
         }
     }
 
@@ -43,6 +46,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+    kotlin {
+        compilerOptions {
+            // 与 compileOptions 的 Java 21 保持一致。
+            // 若不显式指定，Kotlin 会跟随当前 JDK（如 JDK 25 会回退到 JVM_22），
+            // 从而触发 "Inconsistent JVM-target compatibility" 构建失败。
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        }
     }
     buildFeatures {
         compose = true
@@ -71,9 +82,8 @@ dependencies {
     implementation(libs.accompanist.systemuicontroller)
     implementation(libs.material)
     
-    // Navigation and lifecycle
+    // Navigation
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     
     // CameraX + ML Kit for QR scanning
     implementation(libs.androidx.camera.core)
@@ -86,14 +96,8 @@ dependencies {
     // Permissions helper
     implementation(libs.accompanist.permissions)
     
-    // WebKit for WebView functionality
-    implementation(libs.androidx.webkit)
-    
     // OkHttp for network requests
     implementation(libs.okhttp)
-    
-    // Coil for image loading
-    implementation(libs.coil.compose)
     
     // Debug tools (only in debug builds)
     debugImplementation(libs.androidx.compose.ui.tooling)
