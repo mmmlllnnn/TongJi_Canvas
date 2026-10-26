@@ -30,7 +30,10 @@ class SessionRepository(private val context: Context) {
 
     suspend fun addOrUpdateSession(displayName: String, tokens: OAuth2Tokens): UserSession = withContext(Dispatchers.IO) {
         val all = getAllSessions().toMutableList()
-        val existing = all.firstOrNull { it.displayName == displayName }
+        val existing = all.firstOrNull {
+            it.displayName == displayName ||
+                (tokens.accessToken != null && it.accessToken == tokens.accessToken)
+        }
         val session = if (existing == null) {
             UserSession(
                 id = UUID.randomUUID().toString(), 
@@ -42,6 +45,7 @@ class SessionRepository(private val context: Context) {
             )
         } else {
             existing.copy(
+                displayName = displayName,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
                 tokenExpiresAt = System.currentTimeMillis() + (tokens.expiresIn * 1000)

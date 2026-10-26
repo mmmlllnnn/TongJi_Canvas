@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.OAuth2Tokens
+import com.mln.tongji_canvas.data.CredentialVerifier
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.URLDecoder
@@ -558,7 +559,7 @@ fun OAuth2LoginScreen(
 private suspend fun extractCookiesAndSave(
     repository: SessionRepository,
     onSaved: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") webView: WebView
+    webView: WebView
 ) {
     try {
         println("开始提取cookies...")
@@ -568,32 +569,21 @@ private suspend fun extractCookiesAndSave(
         
         // 获取Canvas域名的cookies
         val canvasCookies = cookieManager.getCookie("https://canvas.tongji.edu.cn")
-        val iamCookies = cookieManager.getCookie("https://iam.tongji.edu.cn")
-        
-        println("Canvas cookies: $canvasCookies")
-        println("IAM cookies: $iamCookies")
-        
-        val allCookies = mutableListOf<String>()
-        canvasCookies?.let { allCookies.add(it) }
-        //iamCookies?.let { allCookies.add(it) } // 暂时不使用IAM cookies
-        
-        println("所有cookies: $allCookies")
-        
-        if (allCookies.isNotEmpty()) {
-            // 将cookies转换为简单的认证标识
-            val cookieString = allCookies.joinToString("; ")
-            val display = "用户${System.currentTimeMillis()}"
-            
-            println("保存用户: $display, cookies: $cookieString")
+        if (!canvasCookies.isNullOrBlank()) {
+            val verified = CredentialVerifier.verify(canvasCookies)
+            if (verified == null) {
+                android.widget.Toast.makeText(webView.context, "账号验证失败，请重新登录", android.widget.Toast.LENGTH_LONG).show()
+                return
+            }
             
             // 创建一个模拟的OAuth2Tokens，实际存储cookies
             val tokens = OAuth2Tokens(
-                accessToken = cookieString, // 将cookies作为accessToken存储
+                accessToken = canvasCookies,
                 refreshToken = null,
                 expiresIn = 3600L
             )
             
-            repository.addOrUpdateSession(display, tokens)
+            repository.addOrUpdateSession(verified.displayName, tokens)
             onSaved()
             println("用户保存成功!")
             
@@ -601,12 +591,10 @@ private suspend fun extractCookiesAndSave(
             // 注意：这里不调用initializeWebView，因为会重新加载URL
             // 只是清除数据，让下次进入时重新初始化
         } else {
-            println("没有找到cookies")
+            android.widget.Toast.makeText(webView.context, "未获取到 Canvas Cookies", android.widget.Toast.LENGTH_LONG).show()
         }
     } catch (e: Exception) {
-        // 处理错误
-        println("提取cookies时出错: ${e.message}")
-        e.printStackTrace()
+        android.widget.Toast.makeText(webView.context, "账号验证失败，请稍后重试", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 

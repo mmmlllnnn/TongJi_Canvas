@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.mln.tongji_canvas.data.Course
+import com.mln.tongji_canvas.data.CredentialVerifier
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.UserSession
 import com.mln.tongji_canvas.ui.components.EmptyStatePanel
@@ -118,14 +119,16 @@ fun MainScreen(
     var sessions by remember { mutableStateOf<List<UserSession>>(emptyList()) }
     var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var selectedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var checkedCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val checkedCourseIds = courses.filter { course ->
+        course.memberIds.isNotEmpty() && course.memberIds.all { it in selectedUserIds }
+    }.map { it.id }.toSet()
     var editingSession by remember { mutableStateOf<UserSession?>(null) }
     var editDisplayName by remember { mutableStateOf("") }
     var editAccessToken by remember { mutableStateOf("") }
     var editUserCourseIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var addingUser by remember { mutableStateOf(false) }
-    var addDisplayName by remember { mutableStateOf("") }
     var addAccessToken by remember { mutableStateOf("") }
+    var importError by remember { mutableStateOf<String?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
 
     // 课程相关状态
@@ -193,6 +196,7 @@ fun MainScreen(
             }
             try {
                 var imported = 0
+                var failed = 0
                 var coursesImported = 0
 
                 if (raw.startsWith("{")) {
@@ -206,14 +210,19 @@ fun MainScreen(
                         val obj = usersArray.optJSONObject(i) ?: continue
                         val name = obj.optString("displayName", obj.optString("name")).trim()
                         val token = obj.optString("accessToken", obj.optString("token")).trim()
-                        if (name.isNotEmpty() && token.isNotEmpty()) {
+                        if (token.isNotEmpty()) {
+                            val verified = CredentialVerifier.verify(token)
+                            if (verified == null) {
+                                failed++
+                                continue
+                            }
                             val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
                                 accessToken = token,
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            val session = repository.addOrUpdateSession(name, tokens)
-                            nameToIdMap[name] = session.id
+                            val session = repository.addOrUpdateSession(verified.displayName, tokens)
+                            if (name.isNotEmpty()) nameToIdMap[name] = session.id
                             imported++
                         }
                     }
@@ -253,13 +262,18 @@ fun MainScreen(
                         val obj = array.optJSONObject(i) ?: continue
                         val name = obj.optString("displayName", obj.optString("name")).trim()
                         val token = obj.optString("accessToken", obj.optString("token")).trim()
-                        if (name.isNotEmpty() && token.isNotEmpty()) {
+                        if (token.isNotEmpty()) {
+                            val verified = CredentialVerifier.verify(token)
+                            if (verified == null) {
+                                failed++
+                                continue
+                            }
                             val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
                                 accessToken = token,
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            repository.addOrUpdateSession(name, tokens)
+                            repository.addOrUpdateSession(verified.displayName, tokens)
                             imported++
                         }
                     }
@@ -275,6 +289,7 @@ fun MainScreen(
                 } else {
                     snackbarHostState.showSnackbar("未识别到可导入的账号")
                 }
+                if (failed > 0) importError = "$failed 个账号验证失败，未保存"
             } catch (e: Exception) {
                 snackbarHostState.showSnackbar("剪贴板内容格式有误")
             }
@@ -321,11 +336,6 @@ fun MainScreen(
 
     LaunchedEffect(allUsersExpanded) {
         repository.saveAllUsersExpanded(allUsersExpanded)
-    }
-
-    LaunchedEffect(courses) {
-        val validCourseIds = courses.map { it.id }.toSet()
-        checkedCourseIds = checkedCourseIds.filter { validCourseIds.contains(it) }.toSet()
     }
 
     val topBarState = rememberTopAppBarState()
@@ -404,6 +414,12 @@ fun MainScreen(
                         checkedCourseIds = checkedCourseIds,
                         allUsersExpanded = allUsersExpanded,
                         onToggleAllUsersExpanded = { allUsersExpanded = !allUsersExpanded },
+                        onToggleAllSelection = {
+                            val allIds = sessions.map { it.id }.toSet()
+                            val updated = if (allIds.all { it in selectedUserIds }) emptySet() else allIds
+                            selectedUserIds = updated
+                            scope.launch { repository.saveSelectedUserIds(updated) }
+                        },
                         onToggleSelection = { id, checked ->
                             val updated = if (checked) selectedUserIds + id else selectedUserIds - id
                             selectedUserIds = updated
@@ -415,13 +431,11 @@ fun MainScreen(
                                 sessions.any { it.id == mid }
                             }
                             selectedUserIds = updated
-                            checkedCourseIds = checkedCourseIds + course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onDeselectAllInCourse = { course ->
                             val updated = selectedUserIds - course.memberIds.toSet()
                             selectedUserIds = updated
-                            checkedCourseIds = checkedCourseIds - course.id
                             scope.launch { repository.saveSelectedUserIds(updated) }
                         },
                         onEditUser = { session ->
@@ -519,32 +533,42 @@ fun MainScreen(
 
     AddUserDialog(
         visible = addingUser,
-        displayName = addDisplayName,
         accessToken = addAccessToken,
-        onDisplayNameChange = { addDisplayName = it },
         onAccessTokenChange = { addAccessToken = it },
         onDismiss = {
             addingUser = false
-            addDisplayName = ""
             addAccessToken = ""
         },
         onConfirm = {
-            if (addDisplayName.isNotBlank()) {
+            if (addAccessToken.isNotBlank()) {
                 scope.launch {
+                    val verified = CredentialVerifier.verify(addAccessToken)
+                    if (verified == null) {
+                        importError = "账号验证失败，请检查 Cookies 后重试"
+                        return@launch
+                    }
                     val tokens = com.mln.tongji_canvas.data.OAuth2Tokens(
                         accessToken = addAccessToken.ifBlank { null },
                         refreshToken = null,
                         expiresIn = 3600L
                     )
-                    repository.addOrUpdateSession(addDisplayName, tokens)
+                    repository.addOrUpdateSession(verified.displayName, tokens)
                     refreshSessions()
                     addingUser = false
-                    addDisplayName = ""
                     addAccessToken = ""
                 }
             }
         }
     )
+
+    importError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { importError = null },
+            title = { Text("导入未完成") },
+            text = { Text(error) },
+            confirmButton = { TextButton(onClick = { importError = null }) { Text("知道了") } }
+        )
+    }
 
     // 添加课程对话框
     AddCourseDialog(
@@ -634,6 +658,7 @@ private fun GroupedSessionList(
     checkedCourseIds: Set<String>,
     allUsersExpanded: Boolean,
     onToggleAllUsersExpanded: () -> Unit,
+    onToggleAllSelection: () -> Unit,
     onToggleSelection: (String, Boolean) -> Unit,
     onSelectAllInCourse: (Course) -> Unit,
     onDeselectAllInCourse: (Course) -> Unit,
@@ -655,7 +680,9 @@ private fun GroupedSessionList(
                 icon = Icons.Outlined.People,
                 expanded = allUsersExpanded,
                 onToggleExpanded = onToggleAllUsersExpanded,
-                accentColor = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent
+                accentColor = if (isDark) CanvasPalette.PurpleAccentDark else CanvasPalette.PurpleAccent,
+                allSelected = sessions.isNotEmpty() && sessions.all { it.id in selectedUserIds },
+                onToggleSelectAll = onToggleAllSelection
             )
         }
 
@@ -733,7 +760,9 @@ private fun GroupHeader(
     icon: ImageVector,
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
-    accentColor: Color
+    accentColor: Color,
+    allSelected: Boolean,
+    onToggleSelectAll: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -765,6 +794,11 @@ private fun GroupHeader(
                     style = MaterialTheme.typography.labelMedium,
                     color = accentColor
                 )
+            }
+            if (count > 0) {
+                TextButton(onClick = onToggleSelectAll) {
+                    Text(if (allSelected) "取消全选" else "全选")
+                }
             }
             Icon(
                 if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -1455,9 +1489,7 @@ private fun EditingDialogWithCourses(
 @Composable
 private fun AddUserDialog(
     visible: Boolean,
-    displayName: String,
     accessToken: String,
-    onDisplayNameChange: (String) -> Unit,
     onAccessTokenChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
@@ -1470,12 +1502,7 @@ private fun AddUserDialog(
         title = { Text("手动录入 Cookies") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedTextField(
-                    value = displayName,
-                    onValueChange = onDisplayNameChange,
-                    label = { Text("用户昵称") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Text("验证后自动使用姓名和学号命名")
                 OutlinedTextField(
                     value = accessToken,
                     onValueChange = onAccessTokenChange,
