@@ -4,6 +4,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -28,7 +34,25 @@ class MainActivity : ComponentActivity() {
             Canvas_batch_signTheme {
                 val nav = rememberNavController()
                 NavHost(navController = nav, startDestination = "main") {
-                    composable("main") {
+                    composable(
+                        "main",
+                        exitTransition = {
+                            if (targetState.destination.route == "history") {
+                                slideOutHorizontally(
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { -it / 4 }
+                                )
+                            } else null
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route == "history") {
+                                slideInHorizontally(
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                    initialOffsetX = { -it / 4 }
+                                )
+                            } else null
+                        }
+                    ) {
                         MainScreen(
                             repository = repository,
                             onAddUser = { nav.navigate("login") },
@@ -44,8 +68,24 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         OAuth2LoginScreen(repository = repository, initialUrl = "https://canvas.tongji.edu.cn/") { nav.popBackStack() }
                     }
-                    composable("history") {
-                        SignHistoryScreen(store = history, onBack = { nav.popBackStack() })
+                    composable(
+                        "history",
+                        enterTransition = {
+                            slideInHorizontally(
+                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                initialOffsetX = { it }
+                            )
+                        },
+                        popExitTransition = {
+                            slideOutHorizontally(
+                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                targetOffsetX = { it }
+                            )
+                        }
+                    ) {
+                        Surface(color = MaterialTheme.colorScheme.background) {
+                            SignHistoryScreen(store = history, onBack = { nav.popBackStack() })
+                        }
                     }
                     composable("scanner?selectedUsers={selectedUsers}") { backStackEntry ->
                         val selectedUsersParam = backStackEntry.arguments?.getString("selectedUsers")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""

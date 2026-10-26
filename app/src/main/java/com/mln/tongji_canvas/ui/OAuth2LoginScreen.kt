@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Computer
@@ -26,7 +27,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -344,7 +344,7 @@ fun OAuth2LoginScreen(
 
     Scaffold(
         topBar = {
-            androidx.compose.material3.LargeTopAppBar(
+            androidx.compose.material3.TopAppBar(
                 title = {
                     Column {
                         Text("统一认证登录", style = MaterialTheme.typography.titleMedium)
@@ -390,22 +390,24 @@ fun OAuth2LoginScreen(
                 }
             }
 
-            SingleChoiceSegmentedButtonRow {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = isMobileUA.value,
                     onClick = { applyUserAgentMode(true) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    icon = { Icon(Icons.Outlined.PhoneIphone, contentDescription = null) }
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
+                    icon = { Icon(Icons.Outlined.PhoneIphone, contentDescription = null, modifier = Modifier.size(20.dp)) }
                 ) {
-                    Text("移动端")
+                    Text("移动端", maxLines = 1, softWrap = false)
                 }
                 SegmentedButton(
                     selected = !isMobileUA.value,
                     onClick = { applyUserAgentMode(false) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    icon = { Icon(Icons.Outlined.Computer, contentDescription = null) }
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp),
+                    icon = { Icon(Icons.Outlined.Computer, contentDescription = null, modifier = Modifier.size(20.dp)) }
                 ) {
-                    Text("桌面端")
+                    Text("桌面端", maxLines = 1, softWrap = false)
                 }
             }
 

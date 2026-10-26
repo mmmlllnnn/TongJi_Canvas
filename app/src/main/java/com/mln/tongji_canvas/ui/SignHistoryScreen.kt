@@ -97,12 +97,17 @@ fun SignHistoryScreen(store: SignHistoryStore, onBack: () -> Unit) {
                     onBack()
                 }
             }) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
             }
             Text(
                 if (selectedRun == null) "签到历史" else "签到结果",
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground
             )
             val run = selectedRun
             if (run == null) {
@@ -113,7 +118,11 @@ fun SignHistoryScreen(store: SignHistoryStore, onBack: () -> Unit) {
             } else {
                 Box {
                     IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Outlined.MoreVert, contentDescription = "更多操作")
+                        Icon(
+                            Icons.Outlined.MoreVert,
+                            contentDescription = "更多操作",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(

@@ -11,7 +11,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -77,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -84,6 +87,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -776,40 +781,59 @@ private fun GroupHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onToggleExpanded)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
                 color = accentColor,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = accentColor.copy(alpha = 0.15f)
-            ) {
-                Text(
-                    "$count",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = accentColor
-                )
-            }
-            if (count > 0) {
-                TextButton(onClick = onToggleSelectAll) {
-                    Text(if (allSelected) "取消全选" else "全选")
+            GroupCountBadge(count, accentColor)
+            Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
+                if (count > 0) {
+                    TextButton(
+                        onClick = onToggleSelectAll,
+                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Text(if (allSelected) "取消全选" else "全选", maxLines = 1, softWrap = false)
+                    }
                 }
             }
-            Icon(
-                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
-                tint = accentColor,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = accentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun GroupCountBadge(count: Int, accentColor: Color) {
+    Surface(
+        modifier = Modifier.width(40.dp),
+        shape = RoundedCornerShape(50),
+        color = accentColor.copy(alpha = 0.15f)
+    ) {
+        Text(
+            "$count",
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = accentColor,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -832,7 +856,7 @@ private fun CourseGroupHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -845,25 +869,18 @@ private fun CourseGroupHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = accentColor.copy(alpha = 0.15f)
-            ) {
-                Text(
-                    "$memberCount",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = accentColor
-                )
+            Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
+                GroupCountBadge(memberCount, accentColor)
             }
-            // 全选/取消全选
-            if (memberCount > 0) {
-                IconButton(onClick = onToggleSelectAll, modifier = Modifier.size(36.dp)) {
-                    Checkbox(
-                        checked = allSelected,
-                        onCheckedChange = { onToggleSelectAll() },
-                        modifier = Modifier.size(20.dp)
-                    )
+            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                if (memberCount > 0) {
+                    IconButton(onClick = onToggleSelectAll, modifier = Modifier.size(36.dp)) {
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = { onToggleSelectAll() },
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -884,72 +901,105 @@ private fun MainScreenTopBar(
     onHistoryClick: () -> Unit,
     onAboutClick: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
-    androidx.compose.material3.LargeTopAppBar(
-        title = {
-            Column {
-                Text("批量签到", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "共 $sessionCount 个账号",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (courseCount > 0) {
-                        Text(
-                            "$courseCount 个课程",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (selectedCount > 0) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = if (isDark) CanvasPalette.PurpleAccentContainerDark else CanvasPalette.PurpleAccentContainer,
-                            tonalElevation = 0.dp
-                        ) {
-                            Text(
-                                "已选 $selectedCount 个",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isDark) CanvasPalette.PurpleAccentMutedDark else CanvasPalette.PurpleAccentMuted
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        actions = {
-            TopBarActionButton(
-                icon = Icons.Rounded.ContentPaste,
-                contentDescription = "剪贴板导入",
-                iconVerticalOffset =  (-0.2).dp,// 导入按钮图标稍微往上移，视觉平衡
-                iconSize = (20.3).dp, // 导入按钮图标稍微小一点，视觉平衡
-                onClick = onImportClick
-            )
-            TopBarActionButton(
-                icon = Icons.Rounded.IosShare,
-                contentDescription = "导出账号",
-                iconVerticalOffset =  (-1.2).dp, // 导出按钮图标稍微往上移，视觉平衡
-                iconSize = (22.2).dp, // 导出按钮图标稍微大一点，视觉平衡
-                onClick = onExportClick
-            )
-            TopBarActionButton(
-                icon = Icons.Outlined.History,
-                contentDescription = "签到历史",
-                onClick = onHistoryClick
-            )
-            TopBarActionButton(
-                icon = Icons.Rounded.Info,
-                contentDescription = "关于",
-                iconVerticalOffset = 0.dp, 
-                iconSize = 22.dp, // 关于按钮稍微大一点，视觉平衡
-                onClick = onAboutClick
-            )
-        },
-        scrollBehavior = scrollBehavior
+    val topBarColors = TopAppBarDefaults.largeTopAppBarColors()
+    val containerColor = lerp(
+        topBarColors.containerColor,
+        topBarColors.scrolledContainerColor,
+        scrollBehavior.state.collapsedFraction
     )
+    Column {
+        androidx.compose.material3.LargeTopAppBar(
+            title = {
+                Text("批量签到", style = MaterialTheme.typography.headlineMedium)
+            },
+            actions = {
+                TopBarActionButton(
+                    icon = Icons.Rounded.ContentPaste,
+                    contentDescription = "剪贴板导入",
+                    iconVerticalOffset =  (0.2).dp,// 导入按钮图标稍微往下移，视觉平衡
+                    iconSize = (20.3).dp, // 导入按钮图标稍微小一点，视觉平衡
+                    onClick = onImportClick
+                )
+                TopBarActionButton(
+                    icon = Icons.Rounded.IosShare,
+                    contentDescription = "导出账号",
+                    iconVerticalOffset =  (-1.2).dp, // 导出按钮图标稍微往上移，视觉平衡
+                    iconSize = (22.2).dp, // 导出按钮图标稍微大一点，视觉平衡
+                    onClick = onExportClick
+                )
+                TopBarActionButton(
+                    icon = Icons.Outlined.History,
+                    contentDescription = "签到历史",
+                    iconSize = 22.dp, // 签到历史按钮稍微大一点，视觉平衡
+                    onClick = onHistoryClick
+                )
+                TopBarActionButton(
+                    icon = Icons.Rounded.Info,
+                    contentDescription = "关于",
+                    iconVerticalOffset = 0.dp,
+                    iconSize = 22.dp, // 关于按钮稍微大一点，视觉平衡
+                    onClick = onAboutClick
+                )
+            },
+            expandedHeight = TopAppBarDefaults.LargeAppBarExpandedHeight - 32.dp,
+            colors = TopAppBarDefaults.largeTopAppBarColors(
+                containerColor = containerColor,
+                scrolledContainerColor = containerColor
+            ),
+            scrollBehavior = scrollBehavior
+        )
+        Surface(color = containerColor) {
+            MainScreenStats(
+                sessionCount,
+                selectedCount,
+                courseCount,
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainScreenStats(sessionCount: Int, selectedCount: Int, courseCount: Int, modifier: Modifier = Modifier) {
+    val isDark = isSystemInDarkTheme()
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            "共 $sessionCount 个账号",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false
+        )
+        if (courseCount > 0) {
+            Text(
+                "$courseCount 个课程",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+        if (selectedCount > 0) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (isDark) CanvasPalette.PurpleAccentContainerDark else CanvasPalette.PurpleAccentContainer,
+                tonalElevation = 0.dp
+            ) {
+                Text(
+                    "已选 $selectedCount 个",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isDark) CanvasPalette.PurpleAccentMutedDark else CanvasPalette.PurpleAccentMuted,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1320,8 +1370,8 @@ private fun FloatingDock(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 DockButton(
@@ -1331,7 +1381,7 @@ private fun FloatingDock(
                     onClick = onAdd
                 )
                 GradientDockButton(
-                    modifier = Modifier.weight(1.2f),
+                    modifier = Modifier.weight(1f),
                     enabled = scanEnabled,
                     label = if (selectedCount == 0) "一键签到" else "一键签到（$selectedCount）",
                     onClick = onScan
@@ -1359,16 +1409,18 @@ private fun DockButton(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, contentDescription = null, tint = if (isDark) CanvasPalette.DockButtonTextDark else CanvasPalette.DockButtonText)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 label,
                 color = if (isDark) CanvasPalette.DockButtonTextDark else CanvasPalette.DockButtonText,
-                style = MaterialTheme.typography.titleSmall
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
@@ -1392,14 +1444,23 @@ private fun GradientDockButton(
     val contentColor = if (enabled) Color.White else {
         if (isDark) CanvasPalette.GradientDisabledTextDark else CanvasPalette.GradientDisabledText
     }
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(32.dp))
             .background(Brush.horizontalGradient(gradientColors))
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 8.dp)
             .height(54.dp)
     ) {
+        val labelStyle = MaterialTheme.typography.titleSmall
+        val textWidth = rememberTextMeasurer().measure(
+            text = label,
+            style = labelStyle,
+            maxLines = 1,
+            softWrap = false
+        ).size.width
+        val availableTextWidth = with(LocalDensity.current) { (maxWidth - 24.dp).toPx() }
+        val fontScale = minOf(1f, availableTextWidth / textWidth)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1407,13 +1468,14 @@ private fun GradientDockButton(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, tint = contentColor)
-            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(4.dp))
             Text(
                 label,
                 color = contentColor,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1
+                style = labelStyle.copy(fontSize = labelStyle.fontSize * fontScale),
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

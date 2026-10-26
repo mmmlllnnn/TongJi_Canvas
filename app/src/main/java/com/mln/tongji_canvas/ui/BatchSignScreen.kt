@@ -111,7 +111,11 @@ fun BatchSignScreen(
                 Modifier.fillMaxWidth().padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("重新扫码后补签失败账号", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "重新扫码后补签失败账号",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
                 OutlinedButton(onClick = { scanningAgain = false }) { Text("取消") }
             }
             scanError?.let { Text(it, Modifier.padding(horizontal = 16.dp)) }
@@ -135,7 +139,11 @@ fun BatchSignScreen(
             Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-        Text("批量签到", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "签到结果",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
