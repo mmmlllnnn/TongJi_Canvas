@@ -28,6 +28,15 @@
 > 右上方支持从剪贴板导入导出用户信息。
 
 ## 🆕 最新特性
+v3.3.0
+- 支持一键全选"全部人员"
+- 重新扫码后仅补签失败账号
+- 在线登陆添加账号后自动验证，并按姓名和学号命名
+- 增加"签到历史"
+- 签到改为HTTPS直发，解决了多人并发签到时Cookie穿透的问题，能丝滑的进行多人签到了~
+- 调整布局并修复了一些bug 
+
+
 v3.2.1
 - 深色模式
 
@@ -46,8 +55,8 @@ v3.0.0
 
 <table>
   <tr>
-    <td align="center"><img src="./pic/v3.0.0.jpg" width="100%" alt="新版3.0.0"></td>
-    <td align="center"><img src="./pic/v3.2.0.png" width="100%" alt="新版3.2.0"></td>
+    <td align="center"><img src="./pic/v3.3.0.1.png" width="100%" alt="新版3.0.0"></td>
+    <td align="center"><img src="./pic/v3.3.0.2.png" width="100%" alt="新版3.2.0"></td>
   </tr>
 </table>
 
