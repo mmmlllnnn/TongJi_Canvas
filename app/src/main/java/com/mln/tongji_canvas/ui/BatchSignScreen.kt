@@ -1,19 +1,35 @@
 package com.mln.tongji_canvas.ui
 
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -28,16 +44,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.mln.tongji_canvas.data.SessionRepository
 import com.mln.tongji_canvas.data.SignHistoryStore
 import com.mln.tongji_canvas.data.SignInClient
 import com.mln.tongji_canvas.data.SignResult
 import com.mln.tongji_canvas.data.SignStatus
 import com.mln.tongji_canvas.data.UserSession
+import com.mln.tongji_canvas.ui.theme.CanvasPalette
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -57,9 +78,11 @@ fun BatchSignScreen(
     var running by remember { mutableStateOf(false) }
     var scanningAgain by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
+    var requestUrl by remember(targetUrl) { mutableStateOf(targetUrl) }
 
     suspend fun sign(url: String, targets: List<UserSession>) {
         running = true
+        requestUrl = url
         targets.forEach { results.remove(it.id) }
         coroutineScope {
             targets.map { account ->
@@ -79,6 +102,7 @@ fun BatchSignScreen(
     }
 
     val signed = accounts.count { results[it.id]?.signed == true }
+    val completed = accounts.count { results[it.id] != null }
     val retryable = accounts.filter { results[it.id]?.retryable == true }
 
     if (scanningAgain) {
@@ -112,47 +136,196 @@ fun BatchSignScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
         Text("批量签到", style = MaterialTheme.typography.headlineSmall)
-        Text("已签到 $signed / ${accounts.size}")
-        if (running) CircularProgressIndicator()
-        if (!running && results.isNotEmpty()) {
-            OutlinedButton(onClick = {
-                val summary = buildString {
-                    append("已签到 $signed / ${accounts.size}")
-                    accounts.forEach { account ->
-                        append("\n${account.displayName}：${results[account.id]?.message ?: "未完成"}")
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 2.dp
+        ) {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    "完成 $completed/${accounts.size} · 成功 $signed · 失败 ${completed - signed}",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    Modifier.fillMaxWidth().height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    if (signed > 0) {
+                        Box(Modifier.weight(signed.toFloat()).fillMaxHeight().background(CanvasPalette.Accent))
+                    }
+                    if (completed > signed) {
+                        Box(Modifier.weight((completed - signed).toFloat()).fillMaxHeight().background(MaterialTheme.colorScheme.error))
+                    }
+                    if (accounts.size > completed) {
+                        Box(Modifier.weight((accounts.size - completed).toFloat()).fillMaxHeight())
                     }
                 }
-                clipboard.setText(AnnotatedString(summary))
-            }) { Text("复制结果") }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        onClick = { clipboard.setText(AnnotatedString(requestUrl)) },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                requestUrl,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = "复制链接",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val summary = buildString {
+                                append("已签到 $signed / ${accounts.size}")
+                                accounts.forEach { account ->
+                                    append("\n${account.displayName}：${results[account.id]?.message ?: "未完成"}")
+                                }
+                            }
+                            clipboard.setText(AnnotatedString(summary))
+                        },
+                        modifier = Modifier.height(36.dp),
+                        enabled = !running && results.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) { Text("复制结果") }
+                }
+            }
         }
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             items(accounts, key = { it.id }) { account ->
                 val result = results[account.id]
+                var expanded by remember(result?.html) { mutableStateOf(false) }
+                val (statusLabel, statusColor, statusIcon) = when {
+                    result == null -> Triple("签到中", MaterialTheme.colorScheme.tertiary, Icons.Outlined.Schedule)
+                    result.signed -> Triple(
+                        if (result.status == SignStatus.ALREADY_SIGNED) "已签到过" else "签到成功",
+                        MaterialTheme.colorScheme.primary,
+                        Icons.Outlined.CheckCircle
+                    )
+                    else -> Triple("签到失败", MaterialTheme.colorScheme.error, Icons.Outlined.ErrorOutline)
+                }
                 Surface(
                     Modifier.fillMaxWidth(),
-                    tonalElevation = 2.dp,
-                    color = when {
-                        result == null -> MaterialTheme.colorScheme.surface
-                        result.signed -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.errorContainer
-                    }
+                    shape = RoundedCornerShape(32.dp),
+                    tonalElevation = 2.dp
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(account.displayName, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            when {
-                                result == null -> "签到中"
-                                result.status == SignStatus.ALREADY_SIGNED -> "已签到过（成功）"
-                                result.status == SignStatus.NOT_ENROLLED -> "未选课"
-                                else -> result.message
+                    Column(
+                        Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                account.displayName,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = statusColor.copy(alpha = 0.12f),
+                                contentColor = statusColor
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(statusIcon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Text(statusLabel, style = MaterialTheme.typography.labelLarge)
+                                }
                             }
-                        )
+                        }
                         if (result != null) {
-                            Text("HTTP ${result.httpCode ?: "-"} · ${result.elapsedMs} ms",
-                                style = MaterialTheme.typography.bodySmall)
+                            val html = result.html
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!html.isNullOrBlank()) {
+                                    FilledTonalButton(
+                                        onClick = { expanded = !expanded },
+                                        modifier = Modifier.height(32.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Description,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            if (expanded) "收起详情" else "查看详情",
+                                            modifier = Modifier.padding(start = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "HTTP ${result.httpCode ?: "-"} · ${result.elapsedMs} ms",
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                            if (!html.isNullOrBlank()) {
+                                if (expanded) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            WebView(ctx).apply {
+                                                settings.javaScriptEnabled = false
+                                                settings.blockNetworkLoads = true
+                                                webViewClient = object : WebViewClient() {
+                                                    override fun shouldOverrideUrlLoading(
+                                                        view: WebView,
+                                                        request: WebResourceRequest
+                                                    ): Boolean = true
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(360.dp).clip(RoundedCornerShape(24.dp)),
+                                        onRelease = { it.destroy() },
+                                        update = { webView ->
+                                            if (webView.tag != html) {
+                                                webView.loadDataWithBaseURL(
+                                                    null, html, "text/html", "UTF-8", null
+                                                )
+                                                webView.tag = html
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -163,7 +336,14 @@ fun BatchSignScreen(
             Button(
                 onClick = { scanningAgain = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 24.dp)
-            ) { Text("重新扫码补签（${retryable.size}）") }
+            ) {
+                Icon(
+                    Icons.Outlined.QrCodeScanner,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 6.dp).size(18.dp)
+                )
+                Text("重新扫码补签（${retryable.size}）")
+            }
         }
     }
 }

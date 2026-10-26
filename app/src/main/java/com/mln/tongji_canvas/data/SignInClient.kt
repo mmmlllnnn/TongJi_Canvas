@@ -14,7 +14,8 @@ data class SignResult(
     val message: String,
     val httpCode: Int? = null,
     val elapsedMs: Long = 0,
-    val courseName: String? = null
+    val courseName: String? = null,
+    val html: String? = null
 ) {
     val signed: Boolean get() = status == SignStatus.SUCCESS || status == SignStatus.ALREADY_SIGNED
     val retryable: Boolean get() = status == SignStatus.FAILED || status == SignStatus.QR_EXPIRED || status == SignStatus.NETWORK_ERROR
@@ -55,7 +56,8 @@ object SignInClient {
                 if (!response.isSuccessful) {
                     return@withContext result(SignStatus.FAILED, "HTTP ${response.code}", response.code)
                 }
-                val text = response.body?.string().orEmpty()
+                val html = response.body?.string().orEmpty()
+                val text = html
                     .replace(Regex("<[^>]+>"), " ")
                     .replace("&nbsp;", " ")
                 val course = Regex("签到课程\\s*[:：]\\s*([^\\s]+)")
@@ -65,13 +67,17 @@ object SignInClient {
                         result(SignStatus.ALREADY_SIGNED, "已签到过", response.code, course)
                     text.contains("二维码已过期") || text.contains("二维码已失效") ->
                         result(SignStatus.QR_EXPIRED, "二维码已过期，请重新扫码", response.code, course)
-                    text.contains("签到失败") && text.contains("未加入此课程") ->
+                    text.contains("签到超时") ->
+                        result(SignStatus.FAILED, "签到超时", response.code, course)
+                    text.contains("未加入此课程") ->
                         result(SignStatus.NOT_ENROLLED, "未加入此课程", response.code, course)
+                    text.contains("未知错误") ->
+                        result(SignStatus.FAILED, "未知错误", response.code, course)
                     text.contains("签到失败") ->
                         result(SignStatus.FAILED, failure.find(text)?.groupValues?.get(1) ?: "签到失败", response.code, course)
                     text.contains("签到成功") -> result(SignStatus.SUCCESS, "签到成功", response.code, course)
                     else -> result(SignStatus.FAILED, "未识别的签到结果", response.code, course)
-                }
+                }.copy(html = html)
             }
         } catch (e: IOException) {
             result(SignStatus.NETWORK_ERROR, "网络请求失败，请重新扫码重试")
