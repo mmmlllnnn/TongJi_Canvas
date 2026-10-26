@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhoneIphone
@@ -106,6 +107,7 @@ fun MainScreen(
     repository: SessionRepository,
     onAddUser: () -> Unit,
     onScanQr: (List<String>) -> Unit,
+    onOpenHistory: () -> Unit,
     onTestSession: (UserSession) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -221,7 +223,7 @@ fun MainScreen(
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            val session = repository.addOrUpdateSession(verified.displayName, tokens)
+                            val session = repository.addOrUpdateSession(verified.displayName, tokens, verified.studentId)
                             if (name.isNotEmpty()) nameToIdMap[name] = session.id
                             imported++
                         }
@@ -273,7 +275,7 @@ fun MainScreen(
                                 refreshToken = null,
                                 expiresIn = 3600L
                             )
-                            repository.addOrUpdateSession(verified.displayName, tokens)
+                            repository.addOrUpdateSession(verified.displayName, tokens, verified.studentId)
                             imported++
                         }
                     }
@@ -354,6 +356,7 @@ fun MainScreen(
                 scrollBehavior = scrollBehavior,
                 onImportClick = { importSessionsFromClipboard() },
                 onExportClick = { exportSessionsToClipboard() },
+                onHistoryClick = onOpenHistory,
                 onAboutClick = {
                     val intent = Intent(context, com.mln.tongji_canvas.AboutActivity::class.java)
                     context.startActivity(intent)
@@ -552,7 +555,7 @@ fun MainScreen(
                         refreshToken = null,
                         expiresIn = 3600L
                     )
-                    repository.addOrUpdateSession(verified.displayName, tokens)
+                    repository.addOrUpdateSession(verified.displayName, tokens, verified.studentId)
                     refreshSessions()
                     addingUser = false
                     addAccessToken = ""
@@ -878,6 +881,7 @@ private fun MainScreenTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
     onImportClick: () -> Unit,
     onExportClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onAboutClick: () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
@@ -930,6 +934,11 @@ private fun MainScreenTopBar(
                 iconVerticalOffset =  (-1.2).dp, // 导出按钮图标稍微往上移，视觉平衡
                 iconSize = (22.2).dp, // 导出按钮图标稍微大一点，视觉平衡
                 onClick = onExportClick
+            )
+            TopBarActionButton(
+                icon = Icons.Outlined.History,
+                contentDescription = "签到历史",
+                onClick = onHistoryClick
             )
             TopBarActionButton(
                 icon = Icons.Rounded.Info,

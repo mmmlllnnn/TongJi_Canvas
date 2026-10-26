@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
+    <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">iam.tongji.edu.cn</domain>
         <domain includeSubdomains="true">canvas.tongji.edu.cn</domain>
     </domain-config>

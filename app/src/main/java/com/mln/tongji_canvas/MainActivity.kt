@@ -8,12 +8,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.mln.tongji_canvas.data.SessionRepository
+import com.mln.tongji_canvas.data.SignHistoryStore
 import com.mln.tongji_canvas.ui.OAuth2LoginScreen
 import com.mln.tongji_canvas.ui.MainScreen
 import com.mln.tongji_canvas.ui.ScannerScreen
 import com.mln.tongji_canvas.ui.SimpleScannerScreen
 import com.mln.tongji_canvas.ui.EnhancedScannerScreen
 import com.mln.tongji_canvas.ui.BatchSignScreen
+import com.mln.tongji_canvas.ui.SignHistoryScreen
 import com.mln.tongji_canvas.ui.theme.Canvas_batch_signTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,6 +23,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val repository = SessionRepository(this)
+        val history = SignHistoryStore(this)
         setContent {
             Canvas_batch_signTheme {
                 val nav = rememberNavController()
@@ -34,11 +37,15 @@ class MainActivity : ComponentActivity() {
                                 val userIdsParam = selectedUserIds.joinToString(",")
                                 nav.navigate("scanner?selectedUsers=" + java.net.URLEncoder.encode(userIdsParam, "UTF-8"))
                             },
+                            onOpenHistory = { nav.navigate("history") },
                             onTestSession = { /* TODO: open test page with cookies */ }
                         )
                     }
                     composable("login") {
                         OAuth2LoginScreen(repository = repository, initialUrl = "https://canvas.tongji.edu.cn/") { nav.popBackStack() }
+                    }
+                    composable("history") {
+                        SignHistoryScreen(store = history, onBack = { nav.popBackStack() })
                     }
                     composable("scanner?selectedUsers={selectedUsers}") { backStackEntry ->
                         val selectedUsersParam = backStackEntry.arguments?.getString("selectedUsers")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""

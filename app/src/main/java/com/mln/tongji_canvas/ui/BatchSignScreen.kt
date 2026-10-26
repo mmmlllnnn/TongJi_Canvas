@@ -28,8 +28,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.mln.tongji_canvas.data.SessionRepository
+import com.mln.tongji_canvas.data.SignHistoryStore
 import com.mln.tongji_canvas.data.SignInClient
 import com.mln.tongji_canvas.data.SignResult
 import com.mln.tongji_canvas.data.SignStatus
@@ -45,6 +49,9 @@ fun BatchSignScreen(
     selectedUserIds: Set<String> = emptySet()
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val history = remember { SignHistoryStore(context) }
+    val clipboard = LocalClipboardManager.current
     val results = remember { mutableStateMapOf<String, SignResult>() }
     var accounts by remember { mutableStateOf<List<UserSession>>(emptyList()) }
     var running by remember { mutableStateOf(false) }
@@ -59,6 +66,9 @@ fun BatchSignScreen(
                 launch { results[account.id] = SignInClient.sign(account, url) }
             }.joinAll()
         }
+        history.add(url, targets.mapNotNull { account ->
+            results[account.id]?.let { account to it }
+        })
         running = false
     }
 
@@ -104,13 +114,32 @@ fun BatchSignScreen(
         Text("批量签到", style = MaterialTheme.typography.headlineSmall)
         Text("已签到 $signed / ${accounts.size}")
         if (running) CircularProgressIndicator()
+        if (!running && results.isNotEmpty()) {
+            OutlinedButton(onClick = {
+                val summary = buildString {
+                    append("已签到 $signed / ${accounts.size}")
+                    accounts.forEach { account ->
+                        append("\n${account.displayName}：${results[account.id]?.message ?: "未完成"}")
+                    }
+                }
+                clipboard.setText(AnnotatedString(summary))
+            }) { Text("复制结果") }
+        }
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             items(accounts, key = { it.id }) { account ->
                 val result = results[account.id]
-                Surface(Modifier.fillMaxWidth(), tonalElevation = 2.dp) {
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    tonalElevation = 2.dp,
+                    color = when {
+                        result == null -> MaterialTheme.colorScheme.surface
+                        result.signed -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.errorContainer
+                    }
+                ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(account.displayName, style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -121,6 +150,10 @@ fun BatchSignScreen(
                                 else -> result.message
                             }
                         )
+                        if (result != null) {
+                            Text("HTTP ${result.httpCode ?: "-"} · ${result.elapsedMs} ms",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }

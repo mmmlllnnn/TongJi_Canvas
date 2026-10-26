@@ -3,6 +3,7 @@ package com.mln.tongji_canvas.data
 data class UserSession(
     val id: String,
     val displayName: String,
+    val studentId: String? = null,
     val accessToken: String? = null,
     val refreshToken: String? = null,
     val tokenExpiresAt: Long? = null,

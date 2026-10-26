@@ -583,7 +583,7 @@ private suspend fun extractCookiesAndSave(
                 expiresIn = 3600L
             )
             
-            repository.addOrUpdateSession(verified.displayName, tokens)
+            repository.addOrUpdateSession(verified.displayName, tokens, verified.studentId)
             onSaved()
             println("用户保存成功!")
             

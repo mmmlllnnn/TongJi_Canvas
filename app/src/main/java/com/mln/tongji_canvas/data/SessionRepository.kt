@@ -19,6 +19,8 @@ class SessionRepository(private val context: Context) {
             list += UserSession(
                 id = o.getString("id"),
                 displayName = o.getString("displayName"),
+                studentId = o.optString("studentId").takeIf { it.isNotBlank() }
+                    ?: Regex("\\(([0-9A-Za-z]{4,20})\\)$").find(o.getString("displayName"))?.groupValues?.get(1),
                 accessToken = if (o.has("accessToken")) o.getString("accessToken") else null,
                 refreshToken = if (o.has("refreshToken")) o.getString("refreshToken") else null,
                 tokenExpiresAt = if (o.has("tokenExpiresAt")) o.getLong("tokenExpiresAt") else null,
@@ -28,16 +30,16 @@ class SessionRepository(private val context: Context) {
         list
     }
 
-    suspend fun addOrUpdateSession(displayName: String, tokens: OAuth2Tokens): UserSession = withContext(Dispatchers.IO) {
+    suspend fun addOrUpdateSession(displayName: String, tokens: OAuth2Tokens, studentId: String? = null): UserSession = withContext(Dispatchers.IO) {
         val all = getAllSessions().toMutableList()
-        val existing = all.firstOrNull {
-            it.displayName == displayName ||
-                (tokens.accessToken != null && it.accessToken == tokens.accessToken)
-        }
+        val existing = all.firstOrNull { studentId != null && it.studentId == studentId }
+            ?: all.firstOrNull { tokens.accessToken != null && it.accessToken == tokens.accessToken }
+            ?: all.firstOrNull { it.displayName == displayName && (studentId == null || it.studentId == null || it.studentId == studentId) }
         val session = if (existing == null) {
             UserSession(
                 id = UUID.randomUUID().toString(), 
                 displayName = displayName, 
+                studentId = studentId,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
                 tokenExpiresAt = System.currentTimeMillis() + (tokens.expiresIn * 1000),
@@ -46,6 +48,7 @@ class SessionRepository(private val context: Context) {
         } else {
             existing.copy(
                 displayName = displayName,
+                studentId = studentId ?: existing.studentId,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
                 tokenExpiresAt = System.currentTimeMillis() + (tokens.expiresIn * 1000)
@@ -80,6 +83,7 @@ class SessionRepository(private val context: Context) {
             val o = JSONObject()
             o.put("id", s.id)
             o.put("displayName", s.displayName)
+            s.studentId?.let { o.put("studentId", it) }
             s.accessToken?.let { o.put("accessToken", it) }
             s.refreshToken?.let { o.put("refreshToken", it) }
             s.tokenExpiresAt?.let { o.put("tokenExpiresAt", it) }

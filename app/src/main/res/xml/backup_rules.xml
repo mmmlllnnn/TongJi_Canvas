@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- 使用默认备份规则 -->
+    <exclude domain="sharedpref" path="sessions.xml" />
+    <exclude domain="sharedpref" path="sign_history.xml" />
 </full-backup-content>
