@@ -130,6 +130,9 @@ https://handsome.eu.org/canvas/index.html?_canvas_middle_session=替换为你的
 - `CAMERA`：相机权限，用于二维码扫描
 - `INTERNET`：网络权限，用于登录和签到
 
+### iOS 客户端
+原生 iOS 客户端源码及当前功能范围见 [ios/README.md](ios/README.md)。
+
 ```
 app/src/main/java/com/mln/tongji_canvas/
 ├── MainActivity.kt              # 主活动，导航控制

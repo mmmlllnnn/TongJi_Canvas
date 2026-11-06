@@ -1,0 +1,283 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* TongJiCanvasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* TongJiCanvasApp.swift */; };
+		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
+		A10000000000000000000003 /* CanvasLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* CanvasLoginController.swift */; };
+		A10000000000000000000004 /* CanvasLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* CanvasLoginView.swift */; };
+		A10000000000000000000005 /* NativeQRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* NativeQRScannerView.swift */; };
+		A10000000000000000000006 /* CanvasScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* CanvasScannerView.swift */; };
+		A10000000000000000000007 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AccountStore.swift */; };
+		A10000000000000000000008 /* CanvasSignInClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* CanvasSignInClient.swift */; };
+		A10000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* TongJiCanvasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TongJiCanvasApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* CanvasLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasLoginController.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* CanvasLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasLoginView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* NativeQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeQRScannerView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* CanvasScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasScannerView.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* CanvasSignInClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSignInClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* TongJiCanvas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TongJiCanvas.entitlements; sourceTree = "<group>"; };
+		A2000000000000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A30000000000000000000001 /* TongJiCanvas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TongJiCanvas.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 /* TongJiCanvas */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* TongJiCanvasApp.swift */,
+				A20000000000000000000002 /* ContentView.swift */,
+				A20000000000000000000003 /* CanvasLoginController.swift */,
+				A20000000000000000000004 /* CanvasLoginView.swift */,
+				A20000000000000000000005 /* NativeQRScannerView.swift */,
+				A20000000000000000000006 /* CanvasScannerView.swift */,
+				A20000000000000000000007 /* AccountStore.swift */,
+				A20000000000000000000008 /* CanvasSignInClient.swift */,
+				A20000000000000000000009 /* TongJiCanvas.entitlements */,
+				A2000000000000000000000A /* Assets.xcassets */,
+			);
+			path = TongJiCanvas;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* TongJiCanvas.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000001 /* TongJiCanvas */,
+				A50000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000000000000000000001 /* TongJiCanvas */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000002 /* Build configuration list for PBXNativeTarget "TongJiCanvas" */;
+			buildPhases = (
+				A40000000000000000000001 /* Sources */,
+				A40000000000000000000002 /* Frameworks */,
+				A40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TongJiCanvas;
+			productName = TongJiCanvas;
+			productReference = A30000000000000000000001 /* TongJiCanvas.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A60000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject "TongJiCanvas" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A50000000000000000000003;
+			productRefGroup = A50000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000000000000000000001 /* TongJiCanvas */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000009 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A40000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* TongJiCanvasApp.swift in Sources */,
+				A10000000000000000000002 /* ContentView.swift in Sources */,
+				A10000000000000000000003 /* CanvasLoginController.swift in Sources */,
+				A10000000000000000000004 /* CanvasLoginView.swift in Sources */,
+				A10000000000000000000005 /* NativeQRScannerView.swift in Sources */,
+				A10000000000000000000006 /* CanvasScannerView.swift in Sources */,
+				A10000000000000000000007 /* AccountStore.swift in Sources */,
+				A10000000000000000000008 /* CanvasSignInClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A90000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A90000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A90000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描 Canvas 课堂签到二维码。";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mln.tongjicanvas.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A90000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描 Canvas 课堂签到二维码。";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mln.tongjicanvas.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A90000000000000000000005 /* Unsigned */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Unsigned;
+		};
+		A90000000000000000000006 /* Unsigned */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于扫描 Canvas 课堂签到二维码。";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mln.tongjicanvas.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Unsigned;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000000000000000000001 /* Build configuration list for PBXProject "TongJiCanvas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000001 /* Debug */,
+				A90000000000000000000002 /* Release */,
+				A90000000000000000000005 /* Unsigned */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000000000000000000002 /* Build configuration list for PBXNativeTarget "TongJiCanvas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000003 /* Debug */,
+				A90000000000000000000004 /* Release */,
+				A90000000000000000000006 /* Unsigned */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A80000000000000000000001 /* Project object */;
+}

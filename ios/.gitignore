@@ -1,0 +1,22 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode local state and build products
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcarchive/
+*.ipa
+*.dSYM/
+*.dSYM.zip
+*.xcresult/
+
+# Local signing files
+*.p12
+*.p8
+*.mobileprovision
+
+# macOS
+.DS_Store
