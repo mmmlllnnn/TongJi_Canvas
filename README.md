@@ -10,14 +10,11 @@
 </p>
 </div>
 
-
-
 ## ✨ 项目简介
 
 本应用实现了多人签到功能：多个用户事先通过统一认证平台登录，然后APP分别拦截并保存好每个用户的认证信息，用这个APP扫描二维码，可以并发完成多个人的签到。
 
-认证信息永久有效，只需获取一次。
-
+认证信息永久有效，只需获取一次。所有信息处理均在app内完成。
 
 ## 📖 使用指南
 1. 点击左下方 **添加账号**，点击“在线登陆添加”进入统一认证登录页，可一键切换移动/桌面模式（支持微信扫码登录）。
@@ -35,7 +32,6 @@ v3.3.0
 - 增加"签到历史"
 - 签到改为HTTPS直发，解决了多人并发签到时Cookie穿透的问题，能丝滑的进行多人签到了~
 - 调整布局并修复了一些bug 
-
 
 v3.2.1
 - 深色模式
@@ -62,34 +58,26 @@ v3.0.0
 
 左滑信息卡片🈶删除按钮
 
----
-<!-- 旧版：
-<table>
-  <tr>
-    <td><img src="./pic/1.jpg" width="200"></td>
-    <td><img src="./pic/2.jpg" width="200"></td>
-    <td><img src="./pic/3.jpg" width="200"></td>
-  </tr>
-  <tr>
-    <td><img src="./pic/4.jpg" width="200"></td>
-    <td><img src="./pic/5.jpg" width="200"></td>
-    <td><img src="./pic/6.jpg" width="200"></td>
-  </tr>
-</table> -->
+### 应用配置
+- **最小SDK**：28 (Android 9.0)
+- **目标SDK**：36 (Android 16)
 
+### 权限要求
 
+- `CAMERA`：相机权限，用于二维码扫描
+- `INTERNET`：网络权限，用于登录、账号验证、签到
 
 ## 新增web版：[点击跳转仓库](https://github.com/mmmlllnnn/TongJi_Canvas_Web)
 
-我去，本来只是个 demo，结果用的人数有点超乎想象啊，2个月调用了1375次。
+无需下载，打开链接即可使用，推荐 iOS 用户试试。
 
-但是为什么只有4个 star [生气] 🤡 老白嫖怪们~
+但无法多人并发，一次只能签到一人。
 
-不管了，开始正式维护 web 版
+截止20261107，日均调用50次+，代码开源，推荐自行搭建服务。
 
 [点此查看使用说明](https://handsome.eu.org/canvas/guide.html)
 
-[在线版访问：https://handsome.eu.org/canvas/index.html](https://handsome.eu.org/canvas/index.html)
+[在线访问：https://handsome.eu.org/canvas/index.html](https://handsome.eu.org/canvas/index.html)
 
 ![](./pic/web1.png)
 
@@ -101,48 +89,51 @@ https://handsome.eu.org/canvas/index.html?_canvas_middle_session=替换为你的
 ```
 ![](./pic/web2.png)
 
-
 <br>
 
+## 新增 iOS 客户端：
 
-[旧]
+由 [CrbnsCat10n](https://github.com/CrbnsCat10n) 开发。
 
-~~web版又称呆瓜版， 无需安装APP ，~~
-~~只需要对方在浏览器打开链接,对准二维码完成签到。~~
-
-~~需要事先构建自己的专属url链接: 在?后替换为你的认证信息。~~
-
-
-~~https://你的域名/index.html?_canvas_middle_session=xxxxxxx~~
-
-
-~~在线版访问（自己搭的 不排除某天关停）：[https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx](https://handsome.eu.org/cdn_js/index.html?_canvas_middle_session=xxxxxxx)~~
-
-
-
----
-
-### 应用配置
-- **最小SDK**：28 (Android 9.0)
-- **目标SDK**：36 (Android 16)
-
-### 权限要求
-- `CAMERA`：相机权限，用于二维码扫描
-- `INTERNET`：网络权限，用于登录和签到
-
-### iOS 客户端
 原生 iOS 客户端源码及当前功能范围见 [ios/README.md](ios/README.md)。
+
+因 Apple 安装限制，需要自行构建和签名，暂不提供统一安装包。
+
+## 目录树：
+
+```
+canvas_batch_sign/
+├── app/       # Android 客户端
+├── ios/       # iOS 客户端
+├── gradle/    # Android 构建工具配置
+└── pic/       # 项目截图与展示图片
+```
 
 ```
 app/src/main/java/com/mln/tongji_canvas/
-├── MainActivity.kt              # 主活动，导航控制
-├── data/                       # 数据层
-│   ├── SessionModels.kt        # 数据模型定义
-│   └── SessionRepository.kt    # 数据存储管理
-└── ui/                         # 界面层
-    ├── MainScreen.kt           # 主界面，用户管理
-    ├── OAuth2LoginScreen.kt    # OAuth2登录界面
-    ├── EnhancedScannerScreen.kt # 增强扫描界面
-    └── BatchSignScreen.kt      # 批量签到界面
+├── MainActivity.kt               # 主活动，导航控制与更新提示
+├── AboutActivity.kt              # 关于应用页面
+├── data/                         # 数据层
+│   ├── AppUpdateChecker.kt       # 应用更新检查
+│   ├── CredentialVerifier.kt     # 账号认证信息验证
+│   ├── SessionModels.kt          # 用户会话、认证信息与课程数据模型
+│   ├── SessionRepository.kt      # 用户会话、课程分组与选择状态存储
+│   ├── SignHistoryStore.kt       # 签到历史记录与本地存储
+│   └── SignInClient.kt           # 签到请求与结果处理
+└── ui/                           # 界面层
+    ├── MainScreen.kt             # 主界面，账号与课程分组管理
+    ├── OAuth2LoginScreen.kt      # OAuth2 登录界面
+    ├── EnhancedScannerScreen.kt  # 增强二维码扫描界面（当前使用）
+    ├── ScannerScreen.kt          # 基础二维码扫描界面
+    ├── SimpleScannerScreen.kt    # 简易二维码扫描界面
+    ├── BatchSignScreen.kt        # 批量签到界面
+    ├── SignHistoryScreen.kt      # 签到历史界面
+    ├── components/               # 通用界面组件
+    │   └── StatePanels.kt        # 空状态、错误提示与加载占位组件
+    ├── qr/                       # 二维码扫描状态管理
+    │   └── QrScannerState.kt     # 扫描控制器与状态
+    └── theme/                    # 应用主题
+        ├── Color.kt              # 配色定义
+        ├── Theme.kt              # 主题配置
+        └── Type.kt               # 字体与排版样式
 ```
----
