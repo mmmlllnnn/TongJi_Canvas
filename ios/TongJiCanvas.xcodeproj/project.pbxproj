@@ -16,6 +16,7 @@
 		A10000000000000000000007 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AccountStore.swift */; };
 		A10000000000000000000008 /* CanvasSignInClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* CanvasSignInClient.swift */; };
 		A10000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* Assets.xcassets */; };
+		A1000000000000000000000B /* CanvasSessionCookie.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* CanvasSessionCookie.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 		A20000000000000000000008 /* CanvasSignInClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSignInClient.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* TongJiCanvas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TongJiCanvas.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000000000000000000000B /* CanvasSessionCookie.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSessionCookie.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* TongJiCanvas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TongJiCanvas.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -54,6 +56,7 @@
 				A20000000000000000000006 /* CanvasScannerView.swift */,
 				A20000000000000000000007 /* AccountStore.swift */,
 				A20000000000000000000008 /* CanvasSignInClient.swift */,
+				A2000000000000000000000B /* CanvasSessionCookie.swift */,
 				A20000000000000000000009 /* TongJiCanvas.entitlements */,
 				A2000000000000000000000A /* Assets.xcassets */,
 			);
@@ -152,6 +155,7 @@
 				A10000000000000000000006 /* CanvasScannerView.swift in Sources */,
 				A10000000000000000000007 /* AccountStore.swift in Sources */,
 				A10000000000000000000008 /* CanvasSignInClient.swift in Sources */,
+				A1000000000000000000000B /* CanvasSessionCookie.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,7 +187,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";
@@ -192,6 +196,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mln.tongjicanvas.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -204,7 +209,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";
@@ -213,6 +218,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mln.tongjicanvas.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -234,11 +240,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_ENTITLEMENTS = TongJiCanvas/TongJiCanvas.entitlements;
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Manual;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Tongji Canvas";

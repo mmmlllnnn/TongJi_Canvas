@@ -34,13 +34,13 @@ final class AccountStore: ObservableObject {
     @Published private(set) var selectedAccountIDs: Set<UUID>
 
     private let defaults: UserDefaults
-    private let keychain: CanvasKeychain
+    private let keychain: any CanvasCredentialStore
     private let accountsKey = "canvas.accounts.v1"
     private let selectedAccountsKey = "canvas.selectedAccounts.v1"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, credentialStore: (any CanvasCredentialStore)? = nil) {
         self.defaults = defaults
-        keychain = CanvasKeychain(service: Bundle.main.bundleIdentifier ?? "com.mln.tongjicanvas.ios")
+        keychain = credentialStore ?? CanvasKeychain(service: Bundle.main.bundleIdentifier ?? "com.mln.tongjicanvas.ios")
         let savedAccounts: [CanvasAccount]
         if let data = defaults.data(forKey: accountsKey),
            let saved = try? JSONDecoder().decode([CanvasAccount].self, from: data) {
@@ -59,15 +59,41 @@ final class AccountStore: ObservableObject {
     }
 
     func addSession(displayName: String, cookieValue: String) throws {
-        let label = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cookieValue.isEmpty else { throw AccountStoreError.missingCookie }
+        try insertAccount(displayName: displayName, cookieValue: cookieValue)
+    }
+
+    @discardableResult
+    func addManualAccount(displayName: String, cookieInput: String) throws -> CanvasAccount {
+        let value = cookieInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil : try CanvasSessionCookie.normalize(cookieInput)
+        return try insertAccount(displayName: displayName, cookieValue: value)
+    }
+
+    @discardableResult
+    func updateCookie(for account: CanvasAccount, input: String) throws -> String? {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil : try CanvasSessionCookie.normalize(input)
+        if let value {
+            try keychain.save(value, account: account.id.uuidString)
+        } else {
+            try keychain.remove(account: account.id.uuidString)
+        }
+        objectWillChange.send()
+        return value
+    }
+
+    @discardableResult
+    private func insertAccount(displayName: String, cookieValue: String?) throws -> CanvasAccount {
+        let label = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let account = CanvasAccount(displayName: label.isEmpty ? "未命名" : label)
-        try keychain.save(cookieValue, account: account.id.uuidString)
+        if let cookieValue { try keychain.save(cookieValue, account: account.id.uuidString) }
         accounts.insert(account, at: 0)
         selectedAccountIDs.insert(account.id)
         persistAccounts()
         persistSelectedAccounts()
+        return account
     }
 
     func cookieValue(for account: CanvasAccount) -> String? {
@@ -122,7 +148,13 @@ final class AccountStore: ObservableObject {
     }
 }
 
-private struct CanvasKeychain {
+protocol CanvasCredentialStore {
+    func save(_ value: String, account: String) throws
+    func read(account: String) throws -> String?
+    func remove(account: String) throws
+}
+
+private struct CanvasKeychain: CanvasCredentialStore {
     let service: String
 
     func save(_ value: String, account: String) throws {
