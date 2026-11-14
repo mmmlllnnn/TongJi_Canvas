@@ -234,7 +234,7 @@ struct CanvasScannerView: View {
                     } else {
                         result = CanvasSignResult(
                             status: .expiredSession,
-                            message: "找不到此账号的安全凭据，请重新登录并保存。",
+                            message: "尚未填写 Cookie，请到账号详情填写或重新登录。",
                             httpCode: nil,
                             courseName: nil
                         )
