@@ -30,13 +30,39 @@ struct CanvasSignTarget: Equatable {
     }
 }
 
-enum CanvasSignStatus {
+enum CanvasSignStatus: String, Codable, Hashable {
     case success
     case alreadySigned
     case notEnrolled
     case expiredQR
     case expiredSession
     case failed
+
+    var isSigned: Bool {
+        self == .success || self == .alreadySigned
+    }
+
+    var diagnosticName: String {
+        switch self {
+        case .success: "SUCCESS"
+        case .alreadySigned: "ALREADY_SIGNED"
+        case .notEnrolled: "NOT_ENROLLED"
+        case .expiredQR: "QR_EXPIRED"
+        case .expiredSession: "CREDENTIAL_EXPIRED"
+        case .failed: "FAILED"
+        }
+    }
+
+    var statusLabel: String {
+        switch self {
+        case .success: "签到成功"
+        case .alreadySigned: "已签到过"
+        case .notEnrolled: "未加入课程"
+        case .expiredQR: "二维码已过期"
+        case .expiredSession: "登录已失效"
+        case .failed: "签到失败"
+        }
+    }
 }
 
 struct CanvasSignResult {
@@ -44,6 +70,21 @@ struct CanvasSignResult {
     let message: String
     let httpCode: Int?
     let courseName: String?
+    let elapsedMs: Int
+
+    init(
+        status: CanvasSignStatus,
+        message: String,
+        httpCode: Int?,
+        courseName: String?,
+        elapsedMs: Int = 0
+    ) {
+        self.status = status
+        self.message = message
+        self.httpCode = httpCode
+        self.courseName = courseName
+        self.elapsedMs = elapsedMs
+    }
 }
 
 enum CanvasSignInClient {
@@ -52,11 +93,28 @@ enum CanvasSignInClient {
         cookieValue: String,
         configuration: URLSessionConfiguration = .ephemeral
     ) async -> CanvasSignResult {
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        func finish(
+            _ status: CanvasSignStatus,
+            _ message: String,
+            code: Int?,
+            course: String? = nil
+        ) -> CanvasSignResult {
+            let elapsedMs = max(0, Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))
+            return CanvasSignResult(
+                status: status,
+                message: message,
+                httpCode: code,
+                courseName: course,
+                elapsedMs: elapsedMs
+            )
+        }
+
         guard !cookieValue.isEmpty,
               !cookieValue.contains(";"),
               !cookieValue.contains("\r"),
               !cookieValue.contains("\n") else {
-            return result(.expiredSession, "账号缺少有效的 Canvas 会话", code: nil)
+            return finish(.expiredSession, "账号缺少有效的 Canvas 会话", code: nil)
         }
 
         var request = URLRequest(url: target.url)
@@ -74,50 +132,41 @@ enum CanvasSignInClient {
         do {
             let (data, response) = try await session.data(for: request, delegate: RedirectBlocker())
             guard let response = response as? HTTPURLResponse else {
-                return result(.failed, "无法读取 Canvas 响应", code: nil)
+                return finish(.failed, "无法读取 Canvas 响应", code: nil)
             }
             if (300..<400).contains(response.statusCode) || [401, 403].contains(response.statusCode) {
-                return result(.expiredSession, "Canvas 登录状态已失效，请重新登录", code: response.statusCode)
+                return finish(.expiredSession, "Canvas 登录状态已失效，请重新登录", code: response.statusCode)
             }
             guard (200..<300).contains(response.statusCode) else {
-                return result(.failed, "请求失败（HTTP \(response.statusCode)）", code: response.statusCode)
+                return finish(.failed, "请求失败（HTTP \(response.statusCode)）", code: response.statusCode)
             }
 
             let text = responseText(from: data)
             let course = capture(#"签到课程\s*[:：]\s*([^\s]+)"#, in: text)
                 .flatMap { $0 == "无" ? nil : $0 }
             if ["已签过", "已签到过", "已经签到", "重复签到"].contains(where: text.contains) {
-                return result(.alreadySigned, "该课程已签到", code: response.statusCode, course: course)
+                return finish(.alreadySigned, "该课程已签到", code: response.statusCode, course: course)
             }
             if text.contains("二维码已过期") || text.contains("二维码已失效") {
-                return result(.expiredQR, "签到二维码已过期", code: response.statusCode, course: course)
+                return finish(.expiredQR, "签到二维码已过期", code: response.statusCode, course: course)
             }
             if text.contains("未加入此课程") {
-                return result(.notEnrolled, "当前账号未加入此课程", code: response.statusCode, course: course)
+                return finish(.notEnrolled, "当前账号未加入此课程", code: response.statusCode, course: course)
             }
             if text.contains("签到失败") {
                 let reason = capture(#"签到失败\s*[:：]\s*([^\s<]+)"#, in: text)
-                return result(.failed, reason.map { "签到失败：\($0)" } ?? "签到失败", code: response.statusCode, course: course)
+                return finish(.failed, reason.map { "签到失败：\($0)" } ?? "签到失败", code: response.statusCode, course: course)
             }
             if text.contains("签到成功") {
-                return result(.success, "签到成功", code: response.statusCode, course: course)
+                return finish(.success, "签到成功", code: response.statusCode, course: course)
             }
             if text.contains("签到超时") || text.contains("未知错误") {
-                return result(.failed, text.contains("签到超时") ? "签到超时" : "Canvas 返回未知错误", code: response.statusCode, course: course)
+                return finish(.failed, text.contains("签到超时") ? "签到超时" : "Canvas 返回未知错误", code: response.statusCode, course: course)
             }
-            return result(.failed, "无法识别 Canvas 返回结果", code: response.statusCode, course: course)
+            return finish(.failed, "无法识别 Canvas 返回结果", code: response.statusCode, course: course)
         } catch {
-            return result(.failed, "网络异常，签到结果未知；请先在 Canvas 核对状态", code: nil)
+            return finish(.failed, "网络异常，签到结果未知；请先在 Canvas 核对状态", code: nil)
         }
-    }
-
-    private static func result(
-        _ status: CanvasSignStatus,
-        _ message: String,
-        code: Int?,
-        course: String? = nil
-    ) -> CanvasSignResult {
-        CanvasSignResult(status: status, message: message, httpCode: code, courseName: course)
     }
 
     private static func responseText(from data: Data) -> String {
