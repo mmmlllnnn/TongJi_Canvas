@@ -14,6 +14,18 @@ struct CanvasAccount: Codable, Hashable, Identifiable {
     }
 }
 
+struct CourseGroup: Codable, Hashable, Identifiable {
+    let id: UUID
+    var name: String
+    var memberIDs: [UUID]
+
+    init(id: UUID = UUID(), name: String, memberIDs: [UUID] = []) {
+        self.id = id
+        self.name = name
+        self.memberIDs = memberIDs
+    }
+}
+
 enum AccountStoreError: LocalizedError {
     case missingCookie
     case keychain(OSStatus)
@@ -32,11 +44,13 @@ enum AccountStoreError: LocalizedError {
 final class AccountStore: ObservableObject {
     @Published private(set) var accounts: [CanvasAccount]
     @Published private(set) var selectedAccountIDs: Set<UUID>
+    @Published private(set) var courses: [CourseGroup]
 
     private let defaults: UserDefaults
     private let keychain: any CanvasCredentialStore
     private let accountsKey = "canvas.accounts.v1"
     private let selectedAccountsKey = "canvas.selectedAccounts.v1"
+    private let coursesKey = "canvas.courses.v1"
 
     init(defaults: UserDefaults = .standard, credentialStore: (any CanvasCredentialStore)? = nil) {
         self.defaults = defaults
@@ -50,11 +64,24 @@ final class AccountStore: ObservableObject {
         }
         accounts = savedAccounts
 
+        let validIDs = Set(savedAccounts.map(\.id))
         if let savedIDs = defaults.stringArray(forKey: selectedAccountsKey) {
-            let validIDs = Set(savedAccounts.map(\.id))
             selectedAccountIDs = Set(savedIDs.compactMap(UUID.init(uuidString:))).intersection(validIDs)
         } else {
-            selectedAccountIDs = Set(savedAccounts.map(\.id))
+            selectedAccountIDs = validIDs
+        }
+
+        if let courseData = defaults.data(forKey: coursesKey),
+           let savedCourses = try? JSONDecoder().decode([CourseGroup].self, from: courseData) {
+            courses = savedCourses.map { course in
+                CourseGroup(
+                    id: course.id,
+                    name: course.name,
+                    memberIDs: Self.deduplicatedIDs(course.memberIDs.filter { validIDs.contains($0) })
+                )
+            }
+        } else {
+            courses = []
         }
     }
 
@@ -104,8 +131,16 @@ final class AccountStore: ObservableObject {
         try keychain.remove(account: account.id.uuidString)
         accounts.removeAll { $0.id == account.id }
         selectedAccountIDs.remove(account.id)
+        var coursesChanged = false
+        for index in courses.indices where courses[index].memberIDs.contains(account.id) {
+            courses[index].memberIDs.removeAll { $0 == account.id }
+            coursesChanged = true
+        }
         persistAccounts()
         persistSelectedAccounts()
+        if coursesChanged {
+            persistCourses()
+        }
     }
 
     func updateDisplayName(for account: CanvasAccount, to displayName: String) {
@@ -138,6 +173,166 @@ final class AccountStore: ObservableObject {
         persistSelectedAccounts()
     }
 
+    // MARK: - Course Groups
+
+    func validMemberIDs(for course: CourseGroup) -> [UUID] {
+        let validIDs = Set(accounts.map(\.id))
+        return course.memberIDs.filter { validIDs.contains($0) }
+    }
+
+    func isCourseSelected(_ course: CourseGroup) -> Bool {
+        let members = validMemberIDs(for: course)
+        return !members.isEmpty && members.allSatisfy { selectedAccountIDs.contains($0) }
+    }
+
+    func toggleCourseSelection(_ course: CourseGroup) {
+        let members = Set(validMemberIDs(for: course))
+        guard !members.isEmpty else { return }
+        if isCourseSelected(course) {
+            selectedAccountIDs.subtract(members)
+        } else {
+            selectedAccountIDs.formUnion(members)
+        }
+        persistSelectedAccounts()
+    }
+
+    @discardableResult
+    func addCourse(name: String, memberIDs: Set<UUID> = []) -> CourseGroup? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let orderedMembers = accounts.map(\.id).filter { memberIDs.contains($0) }
+        let course = CourseGroup(name: trimmed, memberIDs: orderedMembers)
+        courses.append(course)
+        persistCourses()
+        return course
+    }
+
+    func updateCourse(_ course: CourseGroup, name: String, memberIDs: Set<UUID>) {
+        guard let index = courses.firstIndex(where: { $0.id == course.id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let orderedMembers = accounts.map(\.id).filter { memberIDs.contains($0) }
+        courses[index].name = trimmed
+        courses[index].memberIDs = orderedMembers
+        persistCourses()
+    }
+
+    func removeCourse(_ course: CourseGroup) {
+        courses.removeAll { $0.id == course.id }
+        persistCourses()
+    }
+
+    func courseIDs(containing account: CanvasAccount) -> Set<UUID> {
+        Set(courses.filter { $0.memberIDs.contains(account.id) }.map(\.id))
+    }
+
+    func setCourses(_ courseIDs: Set<UUID>, for account: CanvasAccount) {
+        var changed = false
+        for index in courses.indices {
+            let shouldContain = courseIDs.contains(courses[index].id)
+            let currentlyContains = courses[index].memberIDs.contains(account.id)
+            if shouldContain && !currentlyContains {
+                courses[index].memberIDs.append(account.id)
+                changed = true
+            } else if !shouldContain && currentlyContains {
+                courses[index].memberIDs.removeAll { $0 == account.id }
+                changed = true
+            }
+        }
+        if changed {
+            persistCourses()
+        }
+    }
+
+    func applyBackupImport(
+        users: [(displayName: String, cookieValue: String)],
+        courses importedCourses: [(name: String, memberNames: [String])]
+    ) throws -> (importedAccounts: Int, updatedAccounts: Int, importedCourses: Int) {
+        var nameToID: [String: UUID] = [:]
+        var cookiesByID: [UUID: String] = [:]
+        for account in accounts {
+            nameToID[account.displayName] = account.id
+            if let cookie = cookieValue(for: account) {
+                cookiesByID[account.id] = cookie
+            }
+        }
+
+        var importedAccounts = 0
+        var updatedAccounts = 0
+        var accountsChanged = false
+        var selectionChanged = false
+        var coursesChanged = false
+
+        for user in users {
+            let trimmedName = user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let existingIndex = accounts.firstIndex { cookiesByID[$0.id] == user.cookieValue }
+                ?? accounts.firstIndex {
+                    !trimmedName.isEmpty && trimmedName != "未命名" && $0.displayName == trimmedName
+                }
+
+            if let index = existingIndex {
+                let accountID = accounts[index].id
+                try keychain.save(user.cookieValue, account: accountID.uuidString)
+                cookiesByID[accountID] = user.cookieValue
+                if !trimmedName.isEmpty, accounts[index].displayName == "未命名" {
+                    accounts[index].displayName = trimmedName
+                    accountsChanged = true
+                }
+                if !trimmedName.isEmpty {
+                    nameToID[trimmedName] = accountID
+                }
+                nameToID[accounts[index].displayName] = accountID
+                updatedAccounts += 1
+            } else {
+                let label = trimmedName.isEmpty ? "未命名" : trimmedName
+                let account = CanvasAccount(displayName: label)
+                try keychain.save(user.cookieValue, account: account.id.uuidString)
+                cookiesByID[account.id] = user.cookieValue
+                accounts.append(account)
+                selectedAccountIDs.insert(account.id)
+                if !trimmedName.isEmpty {
+                    nameToID[trimmedName] = account.id
+                }
+                nameToID[account.displayName] = account.id
+                importedAccounts += 1
+                accountsChanged = true
+                selectionChanged = true
+            }
+        }
+
+        var importedCourseCount = 0
+        for importedCourse in importedCourses {
+            let courseName = importedCourse.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !courseName.isEmpty else { continue }
+
+            let resolvedMembers = Self.deduplicatedIDs(
+                importedCourse.memberNames.compactMap { rawMember in
+                    let memberName = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !memberName.isEmpty else { return nil }
+                    return nameToID[memberName]
+                }
+            )
+
+            if let index = courses.firstIndex(where: { $0.name == courseName }) {
+                let merged = Self.deduplicatedIDs(courses[index].memberIDs + resolvedMembers)
+                if merged != courses[index].memberIDs {
+                    courses[index].memberIDs = merged
+                    coursesChanged = true
+                }
+            } else {
+                courses.append(CourseGroup(name: courseName, memberIDs: resolvedMembers))
+                coursesChanged = true
+            }
+            importedCourseCount += 1
+        }
+
+        if accountsChanged { persistAccounts() }
+        if selectionChanged { persistSelectedAccounts() }
+        if coursesChanged { persistCourses() }
+
+        return (importedAccounts, updatedAccounts, importedCourseCount)
+    }
+
     private func persistAccounts() {
         guard let data = try? JSONEncoder().encode(accounts) else { return }
         defaults.set(data, forKey: accountsKey)
@@ -145,6 +340,16 @@ final class AccountStore: ObservableObject {
 
     private func persistSelectedAccounts() {
         defaults.set(selectedAccountIDs.map(\.uuidString), forKey: selectedAccountsKey)
+    }
+
+    private func persistCourses() {
+        guard let data = try? JSONEncoder().encode(courses) else { return }
+        defaults.set(data, forKey: coursesKey)
+    }
+
+    private static func deduplicatedIDs(_ ids: [UUID]) -> [UUID] {
+        var seen: Set<UUID> = []
+        return ids.filter { seen.insert($0).inserted }
     }
 }
 

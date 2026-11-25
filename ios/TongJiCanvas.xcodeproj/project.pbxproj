@@ -17,6 +17,10 @@
 		A10000000000000000000008 /* CanvasSignInClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* CanvasSignInClient.swift */; };
 		A10000000000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* Assets.xcassets */; };
 		A1000000000000000000000B /* CanvasSessionCookie.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* CanvasSessionCookie.swift */; };
+		A1000000000000000000000C /* AccountTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* AccountTransfer.swift */; };
+		A1000000000000000000000D /* SignHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* SignHistoryStore.swift */; };
+		A1000000000000000000000E /* CourseEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* CourseEditorView.swift */; };
+		A1000000000000000000000F /* SignHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* SignHistoryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +35,10 @@
 		A20000000000000000000009 /* TongJiCanvas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TongJiCanvas.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000B /* CanvasSessionCookie.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasSessionCookie.swift; sourceTree = "<group>"; };
+		A2000000000000000000000C /* AccountTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTransfer.swift; sourceTree = "<group>"; };
+		A2000000000000000000000D /* SignHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignHistoryStore.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* CourseEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseEditorView.swift; sourceTree = "<group>"; };
+		A2000000000000000000000F /* SignHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignHistoryView.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* TongJiCanvas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TongJiCanvas.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -57,6 +65,10 @@
 				A20000000000000000000007 /* AccountStore.swift */,
 				A20000000000000000000008 /* CanvasSignInClient.swift */,
 				A2000000000000000000000B /* CanvasSessionCookie.swift */,
+				A2000000000000000000000C /* AccountTransfer.swift */,
+				A2000000000000000000000D /* SignHistoryStore.swift */,
+				A2000000000000000000000E /* CourseEditorView.swift */,
+				A2000000000000000000000F /* SignHistoryView.swift */,
 				A20000000000000000000009 /* TongJiCanvas.entitlements */,
 				A2000000000000000000000A /* Assets.xcassets */,
 			);
@@ -156,6 +168,10 @@
 				A10000000000000000000007 /* AccountStore.swift in Sources */,
 				A10000000000000000000008 /* CanvasSignInClient.swift in Sources */,
 				A1000000000000000000000B /* CanvasSessionCookie.swift in Sources */,
+				A1000000000000000000000C /* AccountTransfer.swift in Sources */,
+				A1000000000000000000000D /* SignHistoryStore.swift in Sources */,
+				A1000000000000000000000E /* CourseEditorView.swift in Sources */,
+				A1000000000000000000000F /* SignHistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
